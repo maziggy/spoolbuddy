@@ -25,12 +25,12 @@ export function Layout({ children }: LayoutProps) {
           <div class="flex items-center justify-between h-16">
             {/* Logo */}
             <div class="flex items-center">
-              <Link href="/" class="flex items-center space-x-2">
-                <svg class="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
-                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" />
-                  <circle cx="12" cy="12" r="4" fill="currentColor" />
-                </svg>
-                <span class="font-bold text-xl">SpoolStation</span>
+              <Link href="/" class="flex items-center">
+                <img
+                  src="/spoolbuddy_logo_transparent.png"
+                  alt="SpoolBuddy"
+                  class="h-10"
+                />
               </Link>
             </div>
 
@@ -109,7 +109,7 @@ export function Layout({ children }: LayoutProps) {
       {/* Footer */}
       <footer class="bg-gray-800 text-gray-400 py-4">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm">
-          SpoolStation &bull; Based on{" "}
+          SpoolBuddy &bull; Based on{" "}
           <a
             href="https://github.com/yanshay/SpoolEase"
             target="_blank"

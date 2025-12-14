@@ -1,23 +1,30 @@
 import { useEffect, useState } from "preact/hooks";
 import { Link } from "wouter-preact";
-import { api, Spool } from "../lib/api";
+import { api, Spool, Printer } from "../lib/api";
 import { useWebSocket } from "../lib/websocket";
 
 export function Dashboard() {
   const [spools, setSpools] = useState<Spool[]>([]);
+  const [printers, setPrinters] = useState<Printer[]>([]);
   const [loading, setLoading] = useState(true);
-  const { deviceConnected, currentWeight, weightStable, currentTagId, subscribe } = useWebSocket();
+  const { deviceConnected, currentWeight, weightStable, currentTagId, printerStatuses, subscribe } = useWebSocket();
   const [currentSpool, setCurrentSpool] = useState<Spool | null>(null);
 
   useEffect(() => {
     loadSpools();
+    loadPrinters();
 
-    // Subscribe to tag detection
+    // Subscribe to events
     const unsubscribe = subscribe((message) => {
       if (message.type === "tag_detected" && message.spool) {
         setCurrentSpool(message.spool as Spool);
       } else if (message.type === "tag_removed") {
         setCurrentSpool(null);
+      } else if (
+        message.type === "printer_connected" ||
+        message.type === "printer_disconnected"
+      ) {
+        loadPrinters();
       }
     });
 
@@ -33,6 +40,20 @@ export function Dashboard() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPrinters = async () => {
+    try {
+      const data = await api.listPrinters();
+      setPrinters(data);
+    } catch (e) {
+      console.error("Failed to load printers:", e);
+    }
+  };
+
+  // Get effective connection status for a printer
+  const isPrinterConnected = (printer: Printer) => {
+    return printerStatuses.get(printer.serial) ?? printer.connected ?? false;
   };
 
   // Calculate stats
@@ -99,11 +120,37 @@ export function Dashboard() {
         </div>
       </div>
 
+      {/* Printer status */}
+      {printers.length > 0 && (
+        <div class="bg-white rounded-lg shadow p-6">
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">Printers</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {printers.map((printer) => (
+              <div key={printer.serial} class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div>
+                  <p class="font-medium text-gray-900">{printer.name || printer.serial}</p>
+                  <p class="text-sm text-gray-500">{printer.model}</p>
+                </div>
+                <span
+                  class={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    isPrinterConnected(printer)
+                      ? "bg-green-100 text-green-800"
+                      : "bg-gray-100 text-gray-600"
+                  }`}
+                >
+                  {isPrinterConnected(printer) ? "Connected" : "Offline"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Device status & current spool */}
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Device status */}
         <div class="bg-white rounded-lg shadow p-6">
-          <h2 class="text-lg font-semibold text-gray-900 mb-4">Device Status</h2>
+          <h2 class="text-lg font-semibold text-gray-900 mb-4">SpoolBuddy Device</h2>
           <div class="space-y-4">
             <div class="flex items-center justify-between">
               <span class="text-gray-600">Connection</span>

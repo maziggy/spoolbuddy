@@ -1,12 +1,13 @@
 import { createContext, ComponentChildren } from "preact";
-import { useContext, useEffect, useRef, useState, useCallback } from "preact/hooks";
-import { signal, Signal } from "@preact/signals";
+import { useContext, useEffect, useRef, useCallback } from "preact/hooks";
+import { signal } from "@preact/signals";
 
 interface WebSocketState {
   deviceConnected: boolean;
   currentWeight: number | null;
   weightStable: boolean;
   currentTagId: string | null;
+  printerStatuses: Map<string, boolean>;
 }
 
 interface WebSocketContextValue extends WebSocketState {
@@ -25,6 +26,7 @@ const deviceConnected = signal(false);
 const currentWeight = signal<number | null>(null);
 const weightStable = signal(false);
 const currentTagId = signal<string | null>(null);
+const printerStatuses = signal<Map<string, boolean>>(new Map());
 
 export function WebSocketProvider({ children }: { children: ComponentChildren }) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -110,6 +112,28 @@ export function WebSocketProvider({ children }: { children: ComponentChildren })
       case "tag_removed":
         currentTagId.value = null;
         break;
+
+      case "printer_connected": {
+        const serial = message.serial as string;
+        const newMap = new Map(printerStatuses.value);
+        newMap.set(serial, true);
+        printerStatuses.value = newMap;
+        break;
+      }
+
+      case "printer_disconnected": {
+        const serial = message.serial as string;
+        const newMap = new Map(printerStatuses.value);
+        newMap.set(serial, false);
+        printerStatuses.value = newMap;
+        break;
+      }
+
+      case "printer_added":
+      case "printer_updated":
+      case "printer_removed":
+        // These are handled by subscribers (e.g., Printers page)
+        break;
     }
   };
 
@@ -135,6 +159,7 @@ export function WebSocketProvider({ children }: { children: ComponentChildren })
     currentWeight: currentWeight.value,
     weightStable: weightStable.value,
     currentTagId: currentTagId.value,
+    printerStatuses: printerStatuses.value,
     subscribe,
   };
 

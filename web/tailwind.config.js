@@ -4,7 +4,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // SpoolStation brand colors
+        // SpoolBuddy brand colors
         primary: {
           50: "#eff6ff",
           100: "#dbeafe",

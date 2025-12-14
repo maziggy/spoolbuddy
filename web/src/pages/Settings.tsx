@@ -18,7 +18,7 @@ export function Settings() {
       {/* Header */}
       <div>
         <h1 class="text-3xl font-bold text-gray-900">Settings</h1>
-        <p class="text-gray-600">Configure SpoolStation</p>
+        <p class="text-gray-600">Configure SpoolBuddy</p>
       </div>
 
       {/* Device settings */}
@@ -32,7 +32,7 @@ export function Settings() {
             <div>
               <h3 class="text-sm font-medium text-gray-900">Connection Status</h3>
               <p class="text-sm text-gray-500">
-                SpoolStation device connection
+                SpoolBuddy device connection
               </p>
             </div>
             <span
@@ -85,7 +85,7 @@ export function Settings() {
           <div class="flex items-center justify-between">
             <div>
               <h3 class="text-sm font-medium text-gray-900">Version</h3>
-              <p class="text-sm text-gray-500">SpoolStation server version</p>
+              <p class="text-sm text-gray-500">SpoolBuddy server version</p>
             </div>
             <span class="text-sm font-mono text-gray-600">0.1.0</span>
           </div>
@@ -105,7 +105,7 @@ export function Settings() {
         </div>
         <div class="p-6">
           <p class="text-sm text-gray-600">
-            SpoolStation is a filament management system for Bambu Lab 3D printers.
+            SpoolBuddy is a filament management system for Bambu Lab 3D printers.
           </p>
           <p class="mt-2 text-sm text-gray-600">
             Based on{" "}
@@ -121,7 +121,7 @@ export function Settings() {
           </p>
           <div class="mt-4 flex space-x-4">
             <a
-              href="https://github.com/user/spoolstation"
+              href="https://github.com/maziggy/spoolbuddy"
               target="_blank"
               rel="noopener noreferrer"
               class="text-sm text-gray-500 hover:text-gray-700"
@@ -129,7 +129,7 @@ export function Settings() {
               GitHub
             </a>
             <a
-              href="https://github.com/user/spoolstation/issues"
+              href="https://github.com/maziggy/spoolbuddy/issues"
               target="_blank"
               rel="noopener noreferrer"
               class="text-sm text-gray-500 hover:text-gray-700"
