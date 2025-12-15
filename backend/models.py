@@ -100,13 +100,14 @@ class AmsTray(BaseModel):
     k_value: Optional[float] = None
     nozzle_temp_min: Optional[int] = None
     nozzle_temp_max: Optional[int] = None
+    remain: Optional[int] = None  # Remaining filament percentage (0-100)
 
 
 class AmsUnit(BaseModel):
     """AMS unit with humidity and trays."""
     id: int
-    humidity: Optional[int] = None
-    temperature: Optional[int] = None
+    humidity: Optional[int] = None  # Percentage (0-100) from humidity_raw, or index (1-5) fallback
+    temperature: Optional[float] = None  # Temperature in Celsius
     extruder: Optional[int] = None  # 0 = right nozzle, 1 = left nozzle
     trays: list[AmsTray] = []
 
@@ -120,6 +121,32 @@ class PrinterState(BaseModel):
     subtask_name: Optional[str] = None
     ams_units: list[AmsUnit] = []
     vt_tray: Optional[AmsTray] = None
+    tray_now: Optional[int] = None  # Currently active tray (0-15 for AMS, 254/255 for external)
+
+
+# ============ AMS Filament Setting ============
+
+class AmsFilamentSettingRequest(BaseModel):
+    """Request to set filament in an AMS slot."""
+    tray_info_idx: str = ""  # Filament preset ID (e.g., "GFL99")
+    tray_type: str = ""  # Material type (e.g., "PLA")
+    tray_color: str = "FFFFFFFF"  # RGBA hex (e.g., "FF0000FF")
+    nozzle_temp_min: int = 190
+    nozzle_temp_max: int = 230
+
+
+class AssignSpoolRequest(BaseModel):
+    """Request to assign a spool to an AMS slot."""
+    spool_id: str
+    ams_id: int  # 0-3 for AMS, 128-135 for AMS-HT, 254/255 for external
+    tray_id: int  # 0-3 for AMS trays, 0 for HT/external
+
+
+class SetCalibrationRequest(BaseModel):
+    """Request to set calibration profile for an AMS slot."""
+    cali_idx: int = -1  # -1 for default (0.02), or calibration profile index
+    filament_id: str = ""  # Filament preset ID (optional)
+    nozzle_diameter: str = "0.4"  # Nozzle diameter
 
 
 # ============ WebSocket Messages ============

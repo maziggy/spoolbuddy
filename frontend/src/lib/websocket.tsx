@@ -11,13 +11,14 @@ export interface AmsTray {
   k_value: number | null;
   nozzle_temp_min: number | null;
   nozzle_temp_max: number | null;
+  remain: number | null; // Remaining filament percentage (0-100)
 }
 
 export interface AmsUnit {
   id: number;
-  humidity: number | null;
-  temperature: number | null;
-  extruder: number | null; // 0 = right nozzle, 1 = left nozzle (for H2C/H2D)
+  humidity: number | null;  // Percentage (0-100) from humidity_raw, or index (1-5) fallback
+  temperature: number | null;  // Temperature in Celsius
+  extruder: number | null; // 0 = right nozzle, 1 = left nozzle for H2C/H2D
   trays: AmsTray[];
 }
 
@@ -29,6 +30,7 @@ export interface PrinterState {
   subtask_name: string | null;
   ams_units: AmsUnit[];
   vt_tray: AmsTray | null;
+  tray_now: number | null; // Currently active tray (0-15 for AMS, 254/255 for external)
 }
 
 interface WebSocketState {

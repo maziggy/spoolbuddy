@@ -2,7 +2,15 @@ from fastapi import APIRouter, HTTPException
 import logging
 
 from db import get_db
-from models import Printer, PrinterCreate, PrinterUpdate, PrinterWithStatus
+from models import (
+    Printer,
+    PrinterCreate,
+    PrinterUpdate,
+    PrinterWithStatus,
+    AmsFilamentSettingRequest,
+    AssignSpoolRequest,
+    SetCalibrationRequest,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/printers", tags=["printers"])
@@ -118,3 +126,167 @@ async def toggle_auto_connect(serial: str):
         raise HTTPException(status_code=404, detail="Printer not found")
 
     return await db.update_printer(serial, PrinterUpdate(auto_connect=not printer.auto_connect))
+
+
+@router.post("/{serial}/ams/{ams_id}/tray/{tray_id}/filament", status_code=204)
+async def set_filament(serial: str, ams_id: int, tray_id: int, filament: AmsFilamentSettingRequest):
+    """Set filament information for an AMS slot.
+
+    Args:
+        serial: Printer serial number
+        ams_id: AMS unit ID (0-3 for regular AMS, 128-135 for AMS-HT, 254/255 for external)
+        tray_id: Tray ID within AMS (0-3 for regular AMS, 0 for HT/external)
+        filament: Filament settings
+    """
+    if not _printer_manager:
+        raise HTTPException(status_code=500, detail="Printer manager not available")
+
+    if not _printer_manager.is_connected(serial):
+        raise HTTPException(status_code=400, detail="Printer not connected")
+
+    success = _printer_manager.set_filament(
+        serial=serial,
+        ams_id=ams_id,
+        tray_id=tray_id,
+        tray_info_idx=filament.tray_info_idx,
+        tray_type=filament.tray_type,
+        tray_color=filament.tray_color,
+        nozzle_temp_min=filament.nozzle_temp_min,
+        nozzle_temp_max=filament.nozzle_temp_max,
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to set filament")
+
+
+@router.post("/{serial}/ams/{ams_id}/tray/{tray_id}/assign", status_code=204)
+async def assign_spool_to_tray(serial: str, ams_id: int, tray_id: int, request: AssignSpoolRequest):
+    """Assign a spool from inventory to an AMS slot.
+
+    Looks up the spool data and sends filament settings to the printer.
+
+    Args:
+        serial: Printer serial number
+        ams_id: AMS unit ID (0-3 for regular AMS, 128-135 for AMS-HT, 254/255 for external)
+        tray_id: Tray ID within AMS (0-3 for regular AMS, 0 for HT/external)
+        request: Assignment request with spool_id
+    """
+    if not _printer_manager:
+        raise HTTPException(status_code=500, detail="Printer manager not available")
+
+    if not _printer_manager.is_connected(serial):
+        raise HTTPException(status_code=400, detail="Printer not connected")
+
+    # Look up spool from database
+    db = await get_db()
+    spool = await db.get_spool(request.spool_id)
+    if not spool:
+        raise HTTPException(status_code=404, detail="Spool not found")
+
+    # Convert spool color (RGBA format) - ensure it's 8 hex chars
+    tray_color = spool.rgba or "FFFFFFFF"
+    if len(tray_color) == 6:
+        tray_color = tray_color + "FF"  # Add alpha if missing
+
+    # Determine temperature range based on material
+    temp_ranges = {
+        "PLA": (190, 230),
+        "PETG": (220, 260),
+        "ABS": (240, 270),
+        "ASA": (240, 270),
+        "TPU": (200, 230),
+        "PA": (260, 290),
+        "PC": (260, 280),
+        "PVA": (190, 210),
+    }
+    material = (spool.material or "").upper()
+    temp_min, temp_max = temp_ranges.get(material, (190, 250))
+
+    # Build tray_info_idx - this is typically a manufacturer preset ID
+    # For generic filaments, we use empty string
+    tray_info_idx = ""
+
+    success = _printer_manager.set_filament(
+        serial=serial,
+        ams_id=ams_id,
+        tray_id=tray_id,
+        tray_info_idx=tray_info_idx,
+        tray_type=spool.material or "",
+        tray_color=tray_color,
+        nozzle_temp_min=temp_min,
+        nozzle_temp_max=temp_max,
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to assign spool")
+
+    logger.info(f"Assigned spool {spool.id} ({spool.material}) to {serial} AMS {ams_id} tray {tray_id}")
+
+
+@router.post("/{serial}/ams/{ams_id}/tray/{tray_id}/reset", status_code=204)
+async def reset_slot(serial: str, ams_id: int, tray_id: int):
+    """Reset/clear an AMS slot to trigger RFID re-read.
+
+    Clears the slot filament settings, causing the printer to re-read
+    the RFID tag on the next operation.
+
+    Args:
+        serial: Printer serial number
+        ams_id: AMS unit ID (0-3 for regular AMS, 128-135 for AMS-HT, 254/255 for external)
+        tray_id: Tray ID within AMS (0-3 for regular AMS, 0 for HT/external)
+    """
+    if not _printer_manager:
+        raise HTTPException(status_code=500, detail="Printer manager not available")
+
+    if not _printer_manager.is_connected(serial):
+        raise HTTPException(status_code=400, detail="Printer not connected")
+
+    success = _printer_manager.reset_slot(serial=serial, ams_id=ams_id, tray_id=tray_id)
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to reset slot")
+
+
+@router.post("/{serial}/ams/{ams_id}/tray/{tray_id}/calibration", status_code=204)
+async def set_calibration(serial: str, ams_id: int, tray_id: int, request: SetCalibrationRequest):
+    """Set calibration profile (k-value) for an AMS slot.
+
+    Args:
+        serial: Printer serial number
+        ams_id: AMS unit ID
+        tray_id: Tray ID within AMS
+        request: Calibration settings (cali_idx, filament_id, nozzle_diameter)
+    """
+    if not _printer_manager:
+        raise HTTPException(status_code=500, detail="Printer manager not available")
+
+    if not _printer_manager.is_connected(serial):
+        raise HTTPException(status_code=400, detail="Printer not connected")
+
+    success = _printer_manager.set_calibration(
+        serial=serial,
+        ams_id=ams_id,
+        tray_id=tray_id,
+        cali_idx=request.cali_idx,
+        filament_id=request.filament_id,
+        nozzle_diameter=request.nozzle_diameter,
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to set calibration")
+
+
+@router.get("/{serial}/calibrations")
+async def get_calibrations(serial: str):
+    """Get available calibration profiles for a printer.
+
+    Returns list of calibration profiles with cali_idx, name, k_value, filament_id.
+    Use cali_idx=-1 for the default k-value of 0.02.
+    """
+    if not _printer_manager:
+        raise HTTPException(status_code=500, detail="Printer manager not available")
+
+    if not _printer_manager.is_connected(serial):
+        raise HTTPException(status_code=400, detail="Printer not connected")
+
+    return _printer_manager.get_calibrations(serial)

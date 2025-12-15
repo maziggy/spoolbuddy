@@ -77,6 +77,20 @@ export interface SetSlotRequest {
   nozzle_temp_max: number;
 }
 
+export interface SetCalibrationRequest {
+  cali_idx: number;  // -1 for default (0.02), or calibration profile index
+  filament_id?: string;  // Filament preset ID (optional)
+  nozzle_diameter?: string;  // Nozzle diameter (default "0.4")
+}
+
+export interface CalibrationProfile {
+  cali_idx: number;
+  filament_id: string;
+  k_value: number;
+  name: string;
+  nozzle_diameter: string | null;
+}
+
 export interface DeviceStatus {
   connected: boolean;
   last_weight: number | null;
@@ -219,6 +233,24 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify({ auto_connect: autoConnect }),
     });
+  }
+
+  // AMS slot operations
+  async resetSlot(serial: string, amsId: number, trayId: number): Promise<void> {
+    return this.request<void>(`/printers/${serial}/ams/${amsId}/tray/${trayId}/reset`, {
+      method: "POST",
+    });
+  }
+
+  async setCalibration(serial: string, amsId: number, trayId: number, request: SetCalibrationRequest): Promise<void> {
+    return this.request<void>(`/printers/${serial}/ams/${amsId}/tray/${trayId}/calibration`, {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+  }
+
+  async getCalibrations(serial: string): Promise<CalibrationProfile[]> {
+    return this.request<CalibrationProfile[]>(`/printers/${serial}/calibrations`);
   }
 
   // Device

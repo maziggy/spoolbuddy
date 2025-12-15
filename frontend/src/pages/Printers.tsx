@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { api, Printer, DiscoveredPrinter } from "../lib/api";
+import { api, Printer, DiscoveredPrinter, CalibrationProfile } from "../lib/api";
 import { useWebSocket } from "../lib/websocket";
 import { AmsCard, ExternalSpool } from "../components/AmsCard";
 
@@ -11,8 +11,19 @@ export function Printers() {
   const [selectedDiscovered, setSelectedDiscovered] = useState<DiscoveredPrinter | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null); // serial to delete
   const [connecting, setConnecting] = useState<string | null>(null); // serial being connected
+  const [calibrations, setCalibrations] = useState<Record<string, CalibrationProfile[]>>({}); // serial -> calibrations
 
   const { printerStatuses, printerStates, subscribe } = useWebSocket();
+
+  // Fetch calibrations for a connected printer
+  const fetchCalibrations = async (serial: string) => {
+    try {
+      const cals = await api.getCalibrations(serial);
+      setCalibrations(prev => ({ ...prev, [serial]: cals }));
+    } catch (e) {
+      console.error(`Failed to fetch calibrations for ${serial}:`, e);
+    }
+  };
 
   useEffect(() => {
     loadPrinters();
@@ -28,11 +39,26 @@ export function Printers() {
       ) {
         loadPrinters();
         setConnecting(null);
+
+        // Fetch calibrations when printer connects
+        if (message.type === "printer_connected" && message.serial) {
+          fetchCalibrations(message.serial as string);
+        }
       }
     });
 
     return unsubscribe;
   }, [subscribe]);
+
+  // Fetch calibrations for already connected printers on mount
+  useEffect(() => {
+    printers.forEach(printer => {
+      const connected = printerStatuses.get(printer.serial) ?? printer.connected ?? false;
+      if (connected && !calibrations[printer.serial]) {
+        fetchCalibrations(printer.serial);
+      }
+    });
+  }, [printers, printerStatuses]);
 
   const loadPrinters = async () => {
     try {
@@ -259,12 +285,17 @@ export function Printers() {
                             unit={unit}
                             printerModel={printer.model || undefined}
                             numExtruders={isMultiNozzle ? 2 : 1}
+                            printerSerial={printer.serial}
+                            calibrations={calibrations[printer.serial] || []}
+                            trayNow={state.tray_now}
                           />
                         ))}
                         {state.vt_tray && (
                           <ExternalSpool
                             tray={state.vt_tray}
                             numExtruders={isMultiNozzle ? 2 : 1}
+                            printerSerial={printer.serial}
+                            calibrations={calibrations[printer.serial] || []}
                           />
                         )}
                       </div>

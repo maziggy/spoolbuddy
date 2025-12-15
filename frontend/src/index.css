@@ -248,8 +248,10 @@
 /* Table styles */
 .table {
   width: 100%;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  table-layout: auto;
 }
 
 .table th {
