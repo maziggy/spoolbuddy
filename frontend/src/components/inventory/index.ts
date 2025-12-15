@@ -12,6 +12,7 @@ export type { ColumnConfig } from './ColumnConfigModal'
 
 // Modals
 export { AddSpoolModal } from './AddSpoolModal'
+export type { PrinterWithCalibrations } from './AddSpoolModal'
 export { DeleteModal } from './DeleteModal'
 
 // Utilities

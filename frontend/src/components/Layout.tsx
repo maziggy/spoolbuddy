@@ -1,6 +1,8 @@
 import { ComponentChildren } from "preact";
 import { Link, useLocation } from "wouter-preact";
 import { useWebSocket } from "../lib/websocket";
+import { useTheme } from "../lib/theme";
+import { Sun, Moon } from "lucide-preact";
 
 interface LayoutProps {
   children: ComponentChildren;
@@ -16,12 +18,13 @@ const navItems = [
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const { deviceConnected, currentWeight } = useWebSocket();
+  const { theme, toggleTheme } = useTheme();
 
   return (
-    <div class="min-h-screen flex flex-col">
+    <div class="min-h-screen flex flex-col bg-[var(--bg-secondary)]">
       {/* Header */}
-      <header class="bg-primary-800 text-white shadow-lg">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <header class="bg-[var(--bg-header)] text-white shadow-lg">
+        <div class="w-full px-4 sm:px-6 lg:px-8">
           <div class="flex items-center justify-between h-16">
             {/* Logo */}
             <div class="flex items-center">
@@ -42,8 +45,8 @@ export function Layout({ children }: LayoutProps) {
                   href={item.path}
                   class={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                     location === item.path
-                      ? "bg-primary-900 text-white"
-                      : "text-primary-100 hover:bg-primary-700 hover:text-white"
+                      ? "bg-[var(--bg-header-active)] text-white"
+                      : "text-white/80 hover:bg-[var(--bg-header-hover)] hover:text-white"
                   }`}
                 >
                   {item.label}
@@ -53,6 +56,19 @@ export function Layout({ children }: LayoutProps) {
 
             {/* Status indicators */}
             <div class="flex items-center space-x-4">
+              {/* Theme toggle */}
+              <button
+                onClick={toggleTheme}
+                class="p-2 rounded-md hover:bg-[var(--bg-header-hover)] transition-colors"
+                title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              >
+                {theme === "dark" ? (
+                  <Sun class="w-5 h-5 text-yellow-300" />
+                ) : (
+                  <Moon class="w-5 h-5 text-white/80" />
+                )}
+              </button>
+
               {/* Device status */}
               <div class="flex items-center space-x-2">
                 <div
@@ -61,14 +77,14 @@ export function Layout({ children }: LayoutProps) {
                   }`}
                   title={deviceConnected ? "Device connected" : "Device disconnected"}
                 />
-                <span class="text-sm text-primary-200">
+                <span class="text-sm text-white/70">
                   {deviceConnected ? "Connected" : "Offline"}
                 </span>
               </div>
 
               {/* Weight display */}
               {currentWeight !== null && (
-                <div class="bg-primary-900 px-3 py-1 rounded-md">
+                <div class="bg-[var(--bg-header-active)] px-3 py-1 rounded-md">
                   <span class="text-sm font-mono">{currentWeight.toFixed(1)}g</span>
                 </div>
               )}
@@ -78,7 +94,7 @@ export function Layout({ children }: LayoutProps) {
       </header>
 
       {/* Mobile navigation */}
-      <nav class="md:hidden bg-primary-700 border-t border-primary-600">
+      <nav class="md:hidden bg-[var(--bg-header-hover)] border-t border-[var(--border-color)]">
         <div class="flex justify-around">
           {navItems.map((item) => (
             <Link
@@ -87,7 +103,7 @@ export function Layout({ children }: LayoutProps) {
               class={`flex flex-col items-center py-2 px-3 text-xs ${
                 location === item.path
                   ? "text-white"
-                  : "text-primary-200"
+                  : "text-white/70"
               }`}
             >
               <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -101,22 +117,24 @@ export function Layout({ children }: LayoutProps) {
 
       {/* Main content */}
       <main class="flex-1">
-        <div class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div class={`py-6 px-4 sm:px-6 lg:px-8 mx-auto ${
+          location === "/inventory" ? "w-full" : "max-w-7xl w-full"
+        }`}>
           {children}
         </div>
       </main>
 
       {/* Footer */}
-      <footer class="bg-gray-800 text-gray-400 py-4">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm">
-          SpoolBuddy &bull; Based on{" "}
+      <footer class="bg-[var(--bg-tertiary)] text-[var(--text-muted)] py-4 border-t border-[var(--border-color)]">
+        <div class="w-full px-4 sm:px-6 lg:px-8 text-center text-sm">
+          SpoolBuddy &bull;{" "}
           <a
-            href="https://github.com/yanshay/SpoolEase"
+            href="https://github.com/maziggy/spoolbuddy"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-primary-400 hover:text-primary-300"
+            class="text-[var(--accent-color)] hover:text-[var(--accent-hover)]"
           >
-            SpoolEase
+            GitHub
           </a>
         </div>
       </footer>

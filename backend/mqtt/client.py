@@ -38,6 +38,9 @@ class PrinterConnection:
     _on_state_update: Optional[Callable[[str, PrinterState], None]] = field(default=None, repr=False)
     _loop: Optional[asyncio.AbstractEventLoop] = field(default=None, repr=False)
     _calibrations: dict = field(default_factory=dict, repr=False)  # cali_idx -> Calibration
+    _kprofiles: list = field(default_factory=list, repr=False)  # List of calibration profiles (updated on broadcast)
+    _pending_kprofile_response: Optional[asyncio.Event] = field(default=None, repr=False)
+    _expected_kprofile_nozzle: Optional[str] = field(default=None, repr=False)
 
     @property
     def connected(self) -> bool:
@@ -221,6 +224,53 @@ class PrinterConnection:
             for cal in self._calibrations.values()
         ]
 
+    async def get_kprofiles(self, nozzle_diameter: str = "0.4", timeout: float = 5.0, max_retries: int = 3) -> list[dict]:
+        """Request K-profiles from printer with retry logic.
+
+        Bambu printers sometimes ignore the first request, so we retry.
+
+        Args:
+            nozzle_diameter: Filter by nozzle diameter (e.g., "0.4")
+            timeout: Timeout in seconds for each attempt
+            max_retries: Maximum number of retry attempts
+
+        Returns:
+            List of K-profile dicts
+        """
+        if not self._client or not self._connected:
+            logger.warning(f"[{self.serial}] Cannot get K-profiles: not connected")
+            return []
+
+        for attempt in range(max_retries):
+            try:
+                # Create event for waiting
+                self._pending_kprofile_response = asyncio.Event()
+                self._expected_kprofile_nozzle = nozzle_diameter
+                self._kprofiles = []  # Clear previous profiles
+
+                # Send the request
+                self._fetch_calibrations(nozzle_diameter)
+
+                # Wait for response with timeout
+                try:
+                    await asyncio.wait_for(
+                        self._pending_kprofile_response.wait(),
+                        timeout=timeout
+                    )
+                    logger.info(f"[{self.serial}] Got K-profiles response on attempt {attempt + 1}")
+                    return self._kprofiles
+                except asyncio.TimeoutError:
+                    logger.warning(f"[{self.serial}] K-profile request timeout on attempt {attempt + 1}/{max_retries}")
+                    continue
+
+            finally:
+                self._pending_kprofile_response = None
+                self._expected_kprofile_nozzle = None
+
+        # If all retries failed, return whatever we have cached
+        logger.warning(f"[{self.serial}] All K-profile retries failed, returning cached: {len(self._kprofiles)} profiles")
+        return self._kprofiles
+
     def set_filament(
         self,
         ams_id: int,
@@ -317,6 +367,11 @@ class PrinterConnection:
         """MQTT message callback."""
         try:
             payload = json.loads(msg.payload.decode())
+            # Debug: log messages that might contain calibration data
+            if "print" in payload:
+                print_data = payload["print"]
+                if "filaments" in print_data or print_data.get("command") in ["extrusion_cali_get", "extrusion_cali_sel"]:
+                    logger.info(f"[{self.serial}] CALIBRATION MSG: {json.dumps(print_data)[:500]}")
             self._handle_message(payload)
         except json.JSONDecodeError as e:
             logger.debug(f"Failed to parse message: {e}")
@@ -343,7 +398,7 @@ class PrinterConnection:
                 }
             })
             self._client.publish(topic, payload)
-            logger.debug(f"Requested calibrations for nozzle {nozzle_diameter}")
+            logger.info(f"[{self.serial}] Requested calibrations for nozzle {nozzle_diameter}")
 
     def _handle_message(self, payload: dict):
         """Process incoming MQTT message."""
@@ -352,8 +407,18 @@ class PrinterConnection:
 
         print_data = payload["print"]
 
-        # Handle extrusion_cali_get response (calibration profiles)
+        # Debug: log command if present
         command = print_data.get("command")
+        if command:
+            logger.debug(f"[{self.serial}] Received command: {command}")
+
+        # Debug: check if there are filaments in the response (calibration data)
+        if "filaments" in print_data:
+            logger.info(f"[{self.serial}] Found 'filaments' in message with command={command}, count={len(print_data.get('filaments', []))}")
+            self._handle_calibration_response(print_data)
+            return
+
+        # Handle extrusion_cali_get response (calibration profiles)
         if command == "extrusion_cali_get":
             self._handle_calibration_response(print_data)
             return
@@ -407,15 +472,22 @@ class PrinterConnection:
     def _handle_calibration_response(self, print_data: dict):
         """Process calibration profiles from extrusion_cali_get response."""
         filaments = print_data.get("filaments", [])
-        nozzle_diameter = print_data.get("nozzle_diameter")
+        response_nozzle = print_data.get("nozzle_diameter")
+        has_pending_request = self._pending_kprofile_response is not None
+        expected_nozzle = self._expected_kprofile_nozzle
 
-        if not filaments:
+        logger.info(f"[{self.serial}] K-profile response: nozzle={response_nozzle}, {len(filaments)} profiles, pending={has_pending_request}, expected={expected_nozzle}")
+
+        # If waiting for specific nozzle and this doesn't match, ignore (it's a broadcast)
+        if has_pending_request and expected_nozzle and response_nozzle != expected_nozzle:
+            logger.debug(f"[{self.serial}] Ignoring broadcast: got nozzle={response_nozzle}, waiting for {expected_nozzle}")
             return
 
-        count = 0
+        # Parse all profiles
+        profiles = []
         for filament in filaments:
             cali_idx = filament.get("cali_idx")
-            if cali_idx is None or cali_idx <= 0:
+            if cali_idx is None:
                 continue
 
             k_value_str = filament.get("k_value", "0")
@@ -430,14 +502,29 @@ class PrinterConnection:
                 k_value=k_value,
                 name=filament.get("name", ""),
                 extruder_id=filament.get("extruder_id"),
-                nozzle_diameter=nozzle_diameter,
+                nozzle_diameter=response_nozzle,
             )
             self._calibrations[cali_idx] = calibration
-            count += 1
+            profiles.append({
+                "cali_idx": cali_idx,
+                "filament_id": calibration.filament_id,
+                "k_value": calibration.k_value,
+                "name": calibration.name,
+                "nozzle_diameter": response_nozzle,
+                "extruder_id": calibration.extruder_id,
+            })
 
-        if count > 0:
-            cali_indices = sorted(self._calibrations.keys())
-            logger.info(f"Loaded {count} calibration profiles for nozzle {nozzle_diameter}, indices: {cali_indices}")
+        # Update kprofiles list
+        self._kprofiles = profiles
+        logger.info(f"[{self.serial}] Stored {len(profiles)} K-profiles for nozzle {response_nozzle}")
+
+        # Signal pending request if any
+        if self._pending_kprofile_response:
+            logger.info(f"[{self.serial}] Signaling pending K-profile request")
+            if self._loop and self._loop.is_running():
+                self._loop.call_soon_threadsafe(self._pending_kprofile_response.set)
+            else:
+                self._pending_kprofile_response.set()
 
     def _parse_ams_data(self, ams_data: dict):
         """Parse AMS units and trays from MQTT data."""
@@ -682,12 +769,21 @@ class PrinterManager:
         )
 
     def get_calibrations(self, serial: str) -> list[dict]:
-        """Get calibration profiles for a printer."""
+        """Get calibration profiles for a printer (sync, returns cached)."""
         conn = self._connections.get(serial)
         if not conn:
             return []
 
         return conn.get_calibrations()
+
+    async def get_kprofiles(self, serial: str, nozzle_diameter: str = "0.4") -> list[dict]:
+        """Get K-profiles from printer (async with retry)."""
+        conn = self._connections.get(serial)
+        if not conn:
+            logger.warning(f"[{serial}] No connection found for get_kprofiles")
+            return []
+
+        return await conn.get_kprofiles(nozzle_diameter)
 
     def _handle_state_update(self, serial: str, state: PrinterState):
         """Handle state update from printer."""

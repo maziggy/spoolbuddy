@@ -101,6 +101,49 @@ export function getFilamentOptions(): { code: string; name: string }[] {
 }
 
 /**
+ * Parse filament preset name to extract brand and material
+ * e.g., "Bambu PLA Basic" -> { brand: "Bambu", material: "PLA", subtype: "Basic" }
+ */
+export function parseFilamentPreset(code: string): { brand: string; material: string; subtype: string } {
+  const name = FILAMENT_INDEX[code]
+  if (!name) return { brand: '', material: '', subtype: '' }
+
+  // Known brands (order matters - longer matches first)
+  const brands = ['PolyTerra', 'PolyLite', 'Overture', 'Bambu', 'eSUN', 'Generic']
+
+  // Known materials
+  const materials = [
+    'PLA-CF', 'PETG-CF', 'ABS-GF', 'ASA-CF', 'PA-CF', 'PAHT-CF', 'PA6-CF', 'PA6-GF',
+    'PPA-CF', 'PPA-GF', 'PET-CF', 'PPS-CF', 'PETG', 'PLA', 'ABS', 'ASA', 'PC', 'PA',
+    'TPU', 'PVA', 'HIPS', 'BVOH', 'PPS', 'PCTG', 'Support'
+  ]
+
+  let brand = ''
+  let material = ''
+  let remaining = name
+
+  // Extract brand
+  for (const b of brands) {
+    if (name.startsWith(b + ' ')) {
+      brand = b
+      remaining = name.slice(b.length + 1)
+      break
+    }
+  }
+
+  // Extract material
+  for (const m of materials) {
+    if (remaining.startsWith(m + ' ') || remaining === m) {
+      material = m
+      remaining = remaining.slice(m.length).trim()
+      break
+    }
+  }
+
+  return { brand, material, subtype: remaining }
+}
+
+/**
  * Common color presets for filament
  */
 export const COLOR_PRESETS = [

@@ -84,6 +84,13 @@ CREATE TABLE IF NOT EXISTS spool_assignments (
     UNIQUE(printer_serial, ams_id, tray_id)
 );
 
+-- Settings table (key-value store for app settings)
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT,
+    updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_spools_tag_id ON spools(tag_id);
 CREATE INDEX IF NOT EXISTS idx_spools_material ON spools(material);
@@ -398,6 +405,37 @@ class Database:
         )
         await self.conn.commit()
         return await self.get_spool(spool_id)
+
+    # ============ Settings Operations ============
+
+    async def get_setting(self, key: str) -> Optional[str]:
+        """Get a setting value by key."""
+        async with self.conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row['value'] if row else None
+
+    async def set_setting(self, key: str, value: str) -> None:
+        """Set a setting value (upsert)."""
+        now = int(time.time())
+        await self.conn.execute(
+            """INSERT INTO settings (key, value, updated_at)
+               VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET
+               value = excluded.value,
+               updated_at = excluded.updated_at""",
+            (key, value, now)
+        )
+        await self.conn.commit()
+
+    async def delete_setting(self, key: str) -> bool:
+        """Delete a setting."""
+        cursor = await self.conn.execute(
+            "DELETE FROM settings WHERE key = ?", (key,)
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
 
 
 # Global database instance

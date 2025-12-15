@@ -8,8 +8,11 @@ import {
   ColumnConfigModal,
   getDefaultColumns,
   ColumnConfig,
+  PrinterWithCalibrations,
 } from "../components/inventory";
 import { Plus } from "lucide-preact";
+import { useToast } from "../lib/toast";
+import { useWebSocket } from "../lib/websocket";
 
 const COLUMN_CONFIG_KEY = "spoolbuddy-column-config";
 
@@ -50,6 +53,11 @@ export function Inventory() {
   const [spoolsInPrinters] = useState<SpoolsInPrinters>({}); // TODO: Get from printer state
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const { subscribe } = useWebSocket();
+
+  // Printers and their calibrations for PA Profile tab
+  const [printersWithCalibrations, setPrintersWithCalibrations] = useState<PrinterWithCalibrations[]>([]);
 
   // Modal state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -74,9 +82,50 @@ export function Inventory() {
     }
   }, []);
 
+  // Load printers and their calibrations
+  const loadPrintersAndCalibrations = useCallback(async () => {
+    try {
+      const printers = await api.listPrinters();
+      const printersData: PrinterWithCalibrations[] = [];
+
+      for (const printer of printers) {
+        // Only fetch calibrations for connected printers
+        if (printer.connected) {
+          try {
+            const calibrations = await api.getCalibrations(printer.serial);
+            printersData.push({ printer, calibrations });
+          } catch {
+            // If calibrations fail, include printer with empty calibrations
+            printersData.push({ printer, calibrations: [] });
+          }
+        } else {
+          // Printer not connected - include with empty calibrations
+          printersData.push({ printer, calibrations: [] });
+        }
+      }
+
+      setPrintersWithCalibrations(printersData);
+    } catch (e) {
+      console.error("Failed to load printers:", e);
+    }
+  }, []);
+
   useEffect(() => {
     loadSpools();
-  }, [loadSpools]);
+    loadPrintersAndCalibrations();
+
+    // Subscribe to printer connection events to refresh calibrations
+    const unsubscribe = subscribe((message) => {
+      if (message.type === "printer_connected" || message.type === "printer_disconnected") {
+        // Wait a bit for the connection to stabilize before fetching calibrations
+        setTimeout(() => {
+          loadPrintersAndCalibrations();
+        }, 2000);
+      }
+    });
+
+    return unsubscribe;
+  }, [loadSpools, loadPrintersAndCalibrations, subscribe]);
 
   const handleAddSpool = async (input: SpoolInput) => {
     await api.createSpool(input);
@@ -90,8 +139,13 @@ export function Inventory() {
   };
 
   const handleDeleteSpool = async (spool: Spool) => {
-    await api.deleteSpool(spool.id);
-    await loadSpools();
+    try {
+      await api.deleteSpool(spool.id);
+      await loadSpools();
+      showToast('success', `Deleted "${spool.color_name || spool.material}" spool`);
+    } catch (e) {
+      showToast('error', e instanceof Error ? e.message : 'Failed to delete spool');
+    }
   };
 
   const handleColumnConfigSave = (config: ColumnConfig[]) => {
@@ -147,6 +201,7 @@ export function Inventory() {
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
         onSave={handleAddSpool}
+        printersWithCalibrations={printersWithCalibrations}
       />
 
       {/* Edit Spool Modal */}
@@ -155,6 +210,7 @@ export function Inventory() {
         onClose={() => setEditSpool(null)}
         onSave={handleEditSpool}
         editSpool={editSpool}
+        printersWithCalibrations={printersWithCalibrations}
       />
 
       {/* Delete Confirmation Modal */}

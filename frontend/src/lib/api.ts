@@ -45,6 +45,7 @@ export interface SpoolInput {
   note?: string | null;
   data_origin?: string | null;
   tag_type?: string | null;
+  ext_has_k?: boolean;  // Whether has pressure advance K calibration
 }
 
 export interface Printer {
@@ -89,6 +90,7 @@ export interface CalibrationProfile {
   k_value: number;
   name: string;
   nozzle_diameter: string | null;
+  extruder_id?: number;  // 0=right, 1=left (for dual nozzle printers)
 }
 
 export interface DeviceStatus {
@@ -96,6 +98,33 @@ export interface DeviceStatus {
   last_weight: number | null;
   weight_stable: boolean;
   current_tag_id: string | null;
+}
+
+// Cloud API types
+export interface CloudAuthStatus {
+  is_authenticated: boolean;
+  email: string | null;
+}
+
+export interface CloudLoginResponse {
+  success: boolean;
+  needs_verification: boolean;
+  message: string;
+}
+
+export interface SlicerPreset {
+  setting_id: string;
+  name: string;
+  type: string;
+  version: string | null;
+  user_id: string | null;
+  is_custom: boolean;
+}
+
+export interface SlicerSettingsResponse {
+  filament: SlicerPreset[];
+  printer: SlicerPreset[];
+  process: SlicerPreset[];
 }
 
 export interface DiscoveryStatus {
@@ -288,6 +317,46 @@ class ApiClient {
 
   async getDiscoveredPrinters(): Promise<DiscoveredPrinter[]> {
     return this.request<DiscoveredPrinter[]>("/discovery/printers");
+  }
+
+  // Cloud API
+  async getCloudStatus(): Promise<CloudAuthStatus> {
+    return this.request<CloudAuthStatus>("/cloud/status");
+  }
+
+  async cloudLogin(email: string, password: string): Promise<CloudLoginResponse> {
+    return this.request<CloudLoginResponse>("/cloud/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+  }
+
+  async cloudVerify(email: string, code: string): Promise<CloudLoginResponse> {
+    return this.request<CloudLoginResponse>("/cloud/verify", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    });
+  }
+
+  async cloudSetToken(access_token: string): Promise<CloudAuthStatus> {
+    return this.request<CloudAuthStatus>("/cloud/token", {
+      method: "POST",
+      body: JSON.stringify({ access_token }),
+    });
+  }
+
+  async cloudLogout(): Promise<void> {
+    return this.request<void>("/cloud/logout", {
+      method: "POST",
+    });
+  }
+
+  async getSlicerSettings(): Promise<SlicerSettingsResponse> {
+    return this.request<SlicerSettingsResponse>("/cloud/settings");
+  }
+
+  async getFilamentPresets(): Promise<SlicerPreset[]> {
+    return this.request<SlicerPreset[]>("/cloud/filaments");
   }
 }
 

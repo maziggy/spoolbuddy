@@ -44,8 +44,7 @@ Thumbs.db
 .vite/
 
 # Screenshots (reference only, don't commit large assets)
-screenshots/OrcaSlicer/
-screenshots/ha-bambulab-cards/
+screenshots/
 
 # Rust / Firmware
 firmware/target/

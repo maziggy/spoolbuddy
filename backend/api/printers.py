@@ -302,16 +302,23 @@ async def set_calibration(serial: str, ams_id: int, tray_id: int, request: SetCa
 
 
 @router.get("/{serial}/calibrations")
-async def get_calibrations(serial: str):
-    """Get available calibration profiles for a printer.
+async def get_calibrations(serial: str, nozzle_diameter: str = "0.4"):
+    """Get available calibration profiles (K-profiles) for a printer.
 
     Returns list of calibration profiles with cali_idx, name, k_value, filament_id.
-    Use cali_idx=-1 for the default k-value of 0.02.
+    Uses async request with retry logic to reliably fetch profiles from printer.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     if not _printer_manager:
         raise HTTPException(status_code=500, detail="Printer manager not available")
 
     if not _printer_manager.is_connected(serial):
+        logger.warning(f"[API] get_calibrations: printer {serial} not connected")
         raise HTTPException(status_code=400, detail="Printer not connected")
 
-    return _printer_manager.get_calibrations(serial)
+    # Use async method with retry logic
+    calibrations = await _printer_manager.get_kprofiles(serial, nozzle_diameter)
+    logger.info(f"[API] get_calibrations({serial}): returning {len(calibrations)} K-profiles")
+    return calibrations

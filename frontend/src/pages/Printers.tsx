@@ -2,6 +2,31 @@ import { useEffect, useState } from "preact/hooks";
 import { api, Printer, DiscoveredPrinter, CalibrationProfile } from "../lib/api";
 import { useWebSocket } from "../lib/websocket";
 import { AmsCard, ExternalSpool } from "../components/AmsCard";
+import { useToast } from "../lib/toast";
+
+const EXPANDED_PRINTERS_KEY = "spoolbuddy-expanded-printers";
+
+// Load expanded state from localStorage
+function loadExpandedPrinters(): Set<string> {
+  try {
+    const stored = localStorage.getItem(EXPANDED_PRINTERS_KEY);
+    if (stored) {
+      return new Set(JSON.parse(stored));
+    }
+  } catch {
+    // Ignore errors
+  }
+  return new Set();
+}
+
+// Save expanded state to localStorage
+function saveExpandedPrinters(expanded: Set<string>) {
+  try {
+    localStorage.setItem(EXPANDED_PRINTERS_KEY, JSON.stringify([...expanded]));
+  } catch {
+    // Ignore errors
+  }
+}
 
 export function Printers() {
   const [printers, setPrinters] = useState<Printer[]>([]);
@@ -12,6 +37,21 @@ export function Printers() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null); // serial to delete
   const [connecting, setConnecting] = useState<string | null>(null); // serial being connected
   const [calibrations, setCalibrations] = useState<Record<string, CalibrationProfile[]>>({}); // serial -> calibrations
+  const [expandedPrinters, setExpandedPrinters] = useState<Set<string>>(loadExpandedPrinters); // expanded printers by serial
+  const { showToast } = useToast();
+
+  const toggleExpanded = (serial: string) => {
+    setExpandedPrinters(prev => {
+      const next = new Set(prev);
+      if (next.has(serial)) {
+        next.delete(serial);
+      } else {
+        next.add(serial);
+      }
+      saveExpandedPrinters(next);
+      return next;
+    });
+  };
 
   const { printerStatuses, printerStates, subscribe } = useWebSocket();
 
@@ -79,50 +119,51 @@ export function Printers() {
     if (!deleteConfirm) return;
 
     const serial = deleteConfirm;
+    const printerToDelete = printers.find(p => p.serial === serial);
     setDeleteConfirm(null);
 
     try {
       await api.deletePrinter(serial);
       await loadPrinters();
+      showToast('success', `Deleted printer "${printerToDelete?.name || serial}"`);
     } catch (e) {
       console.error("Failed to delete printer:", e);
-      alert(`Failed to delete printer: ${e instanceof Error ? e.message : e}`);
+      showToast('error', `Failed to delete printer: ${e instanceof Error ? e.message : e}`);
     }
   };
 
   const handleConnect = async (serial: string) => {
-    console.log("Connecting to printer:", serial);
+    const printer = printers.find(p => p.serial === serial);
     setConnecting(serial);
     try {
       await api.connectPrinter(serial);
-      console.log("Connect request sent");
-      // The WebSocket will notify us when connection is established
+      showToast('success', `Connected to "${printer?.name || serial}"`);
     } catch (e) {
       console.error("Failed to connect:", e);
       setConnecting(null);
-      alert(`Failed to connect: ${e instanceof Error ? e.message : e}`);
+      showToast('error', `Failed to connect: ${e instanceof Error ? e.message : e}`);
     }
   };
 
   const handleDisconnect = async (serial: string) => {
-    console.log("Disconnecting from printer:", serial);
+    const printer = printers.find(p => p.serial === serial);
     try {
       await api.disconnectPrinter(serial);
-      console.log("Disconnect request sent");
+      showToast('success', `Disconnected from "${printer?.name || serial}"`);
     } catch (e) {
       console.error("Failed to disconnect:", e);
-      alert(`Failed to disconnect: ${e instanceof Error ? e.message : e}`);
+      showToast('error', `Failed to disconnect: ${e instanceof Error ? e.message : e}`);
     }
   };
 
   const handleAutoConnectToggle = async (serial: string, currentValue: boolean) => {
     try {
       await api.setAutoConnect(serial, !currentValue);
-      // Reload to update state
       await loadPrinters();
+      showToast('success', `Auto-connect ${!currentValue ? 'enabled' : 'disabled'}`);
     } catch (e) {
       console.error("Failed to toggle auto-connect:", e);
-      alert(`Failed to toggle auto-connect: ${e instanceof Error ? e.message : e}`);
+      showToast('error', `Failed to toggle auto-connect: ${e instanceof Error ? e.message : e}`);
     }
   };
 
@@ -136,13 +177,13 @@ export function Printers() {
       {/* Header */}
       <div class="flex justify-between items-center">
         <div>
-          <h1 class="text-3xl font-bold text-gray-900">Printers</h1>
-          <p class="text-gray-600">Manage your Bambu Lab printers</p>
+          <h1 class="text-3xl font-bold text-[var(--text-primary)]">Printers</h1>
+          <p class="text-[var(--text-secondary)]">Manage your Bambu Lab printers</p>
         </div>
         <div class="flex space-x-3">
           <button
             onClick={() => setShowDiscoverModal(true)}
-            class="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            class="btn"
           >
             <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -151,7 +192,7 @@ export function Printers() {
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            class="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700"
+            class="btn btn-primary"
           >
             <svg class="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -162,23 +203,23 @@ export function Printers() {
       </div>
 
       {/* Printer list */}
-      <div class="bg-white rounded-lg shadow">
+      <div class="card">
         {loading ? (
-          <div class="p-8 text-center text-gray-500">Loading...</div>
+          <div class="p-8 text-center text-[var(--text-muted)]">Loading...</div>
         ) : printers.length === 0 ? (
           <div class="p-8 text-center">
-            <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="mx-auto h-12 w-12 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
-            <h3 class="mt-2 text-sm font-medium text-gray-900">No printers</h3>
-            <p class="mt-1 text-sm text-gray-500">
+            <h3 class="mt-2 text-sm font-medium text-[var(--text-primary)]">No printers</h3>
+            <p class="mt-1 text-sm text-[var(--text-secondary)]">
               Add a printer to get started with automatic AMS configuration.
             </p>
             <div class="mt-6">
               <button
                 type="button"
                 onClick={() => setShowAddModal(true)}
-                class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700"
+                class="btn btn-primary"
               >
                 <svg class="-ml-1 mr-2 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -188,29 +229,49 @@ export function Printers() {
             </div>
           </div>
         ) : (
-          <ul class="divide-y divide-gray-200">
+          <ul class="divide-y divide-[var(--border-color)]">
             {printers.map((printer) => {
               const state = printerStates.get(printer.serial);
               const connected = isConnected(printer);
               const isMultiNozzle = printer.model && ["H2C", "H2D"].includes(printer.model.toUpperCase());
+              const isExpanded = expandedPrinters.has(printer.serial);
+              const hasDetails = connected && state && (state.ams_units?.length > 0 || state.vt_tray || (state.gcode_state && state.gcode_state !== "IDLE"));
 
               return (
-                <li key={printer.serial} class="p-6 hover:bg-gray-50">
-                  <div class="flex items-center justify-between">
+                <li key={printer.serial} class="p-6 hover:bg-[var(--bg-secondary)] bg-[var(--bg-primary)] transition-colors">
+                  <div
+                    class="flex items-center justify-between cursor-pointer"
+                    onClick={() => hasDetails && toggleExpanded(printer.serial)}
+                  >
                     <div class="flex items-center">
+                      {/* Expand/collapse icon */}
+                      <div class="flex-shrink-0 mr-2">
+                        {hasDetails ? (
+                          <svg
+                            class={`h-5 w-5 text-[var(--text-muted)] transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                          </svg>
+                        ) : (
+                          <div class="w-5" />
+                        )}
+                      </div>
                       <div class="flex-shrink-0">
-                        <svg class="h-10 w-10 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg class="h-10 w-10 text-[var(--text-muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
                         </svg>
                       </div>
                       <div class="ml-4">
-                        <p class="text-sm font-medium text-gray-900">
+                        <p class="text-sm font-medium text-[var(--text-primary)]">
                           {printer.name || printer.serial}
                         </p>
-                        <p class="text-sm text-gray-500">
+                        <p class="text-sm text-[var(--text-secondary)]">
                           {printer.model || "Unknown Model"} &bull; {printer.ip_address || "No IP"}
                         </p>
-                        <p class="text-xs text-gray-400 font-mono">{printer.serial}</p>
+                        <p class="text-xs text-[var(--text-muted)] font-mono">{printer.serial}</p>
                       </div>
                     </div>
                     <div class="flex items-center space-x-4">
@@ -275,65 +336,70 @@ export function Printers() {
                     </div>
                   </div>
 
-                  {/* AMS Section - shown when connected */}
-                  {connected && state && state.ams_units && state.ams_units.length > 0 && (
-                    <div class="mt-4 pt-4 border-t border-gray-100">
-                      <div class="flex flex-wrap gap-3">
-                        {state.ams_units.map((unit) => (
-                          <AmsCard
-                            key={unit.id}
-                            unit={unit}
-                            printerModel={printer.model || undefined}
-                            numExtruders={isMultiNozzle ? 2 : 1}
-                            printerSerial={printer.serial}
-                            calibrations={calibrations[printer.serial] || []}
-                            trayNow={state.tray_now}
-                          />
-                        ))}
-                        {state.vt_tray && (
-                          <ExternalSpool
-                            tray={state.vt_tray}
-                            numExtruders={isMultiNozzle ? 2 : 1}
-                            printerSerial={printer.serial}
-                            calibrations={calibrations[printer.serial] || []}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Print status - shown when printing */}
-                  {connected && state && state.gcode_state && state.gcode_state !== "IDLE" && (
-                    <div class="mt-3 pt-3 border-t border-gray-100">
-                      <div class="flex items-center gap-4">
-                        <div class="flex-1">
-                          <div class="flex items-center justify-between text-sm">
-                            <span class="text-gray-600">{state.subtask_name || "Printing"}</span>
-                            <span class="font-medium text-gray-900">{state.print_progress ?? 0}%</span>
+                  {/* Expandable details section */}
+                  {isExpanded && (
+                    <>
+                      {/* AMS Section - shown when connected */}
+                      {connected && state && state.ams_units && state.ams_units.length > 0 && (
+                        <div class="mt-4 pt-4 border-t border-[var(--border-color)]">
+                          <div class="flex flex-wrap gap-3">
+                            {state.ams_units.map((unit) => (
+                              <AmsCard
+                                key={unit.id}
+                                unit={unit}
+                                printerModel={printer.model || undefined}
+                                numExtruders={isMultiNozzle ? 2 : 1}
+                                printerSerial={printer.serial}
+                                calibrations={calibrations[printer.serial] || []}
+                                trayNow={state.tray_now}
+                              />
+                            ))}
+                            {state.vt_tray && (
+                              <ExternalSpool
+                                tray={state.vt_tray}
+                                numExtruders={isMultiNozzle ? 2 : 1}
+                                printerSerial={printer.serial}
+                                calibrations={calibrations[printer.serial] || []}
+                              />
+                            )}
                           </div>
-                          <div class="mt-1 w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              class="bg-primary-600 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${state.print_progress ?? 0}%` }}
-                            />
-                          </div>
-                          {state.layer_num !== null && state.total_layer_num !== null && (
-                            <p class="text-xs text-gray-500 mt-1">
-                              Layer {state.layer_num} / {state.total_layer_num}
-                            </p>
-                          )}
                         </div>
-                        <span class={`text-xs px-2 py-1 rounded-full ${
-                          state.gcode_state === "RUNNING" ? "bg-blue-100 text-blue-700" :
-                          state.gcode_state === "PAUSE" ? "bg-yellow-100 text-yellow-700" :
-                          state.gcode_state === "FINISH" ? "bg-green-100 text-green-700" :
-                          state.gcode_state === "FAILED" ? "bg-red-100 text-red-700" :
-                          "bg-gray-100 text-gray-600"
-                        }`}>
-                          {state.gcode_state}
-                        </span>
-                      </div>
-                    </div>
+                      )}
+
+                      {/* Print status - shown when printing */}
+                      {connected && state && state.gcode_state && state.gcode_state !== "IDLE" && (
+                        <div class="mt-3 pt-3 border-t border-[var(--border-color)]">
+                          <div class="flex items-center gap-4">
+                            <div class="flex-1">
+                              <div class="flex items-center justify-between text-sm">
+                                <span class="text-[var(--text-secondary)]">{state.subtask_name || "Printing"}</span>
+                                <span class="font-medium text-[var(--text-primary)]">{state.print_progress ?? 0}%</span>
+                              </div>
+                              <div class="mt-1 w-full bg-[var(--bg-tertiary)] rounded-full h-2">
+                                <div
+                                  class="bg-[var(--accent-color)] h-2 rounded-full transition-all duration-300"
+                                  style={{ width: `${state.print_progress ?? 0}%` }}
+                                />
+                              </div>
+                              {state.layer_num !== null && state.total_layer_num !== null && (
+                                <p class="text-xs text-[var(--text-muted)] mt-1">
+                                  Layer {state.layer_num} / {state.total_layer_num}
+                                </p>
+                              )}
+                            </div>
+                            <span class={`text-xs px-2 py-1 rounded-full ${
+                              state.gcode_state === "RUNNING" ? "bg-blue-100 text-blue-700" :
+                              state.gcode_state === "PAUSE" ? "bg-yellow-100 text-yellow-700" :
+                              state.gcode_state === "FINISH" ? "bg-green-100 text-green-700" :
+                              state.gcode_state === "FAILED" ? "bg-red-100 text-red-700" :
+                              "bg-[var(--bg-tertiary)] text-[var(--text-secondary)]"
+                            }`}>
+                              {state.gcode_state}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </li>
               );
@@ -343,16 +409,16 @@ export function Printers() {
       </div>
 
       {/* Info card */}
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div class="bg-[var(--info-color)]/10 border border-[var(--info-color)]/30 rounded-lg p-4">
         <div class="flex">
           <div class="flex-shrink-0">
-            <svg class="h-5 w-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg class="h-5 w-5 text-[var(--info-color)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <div class="ml-3">
-            <h3 class="text-sm font-medium text-blue-800">Printer Connection</h3>
-            <p class="mt-1 text-sm text-blue-700">
+            <h3 class="text-sm font-medium text-[var(--text-primary)]">Printer Connection</h3>
+            <p class="mt-1 text-sm text-[var(--text-secondary)]">
               SpoolBuddy connects to your Bambu Lab printers via MQTT over your local network.
               You'll need the printer's serial number, IP address, and access code (found in the printer's network settings).
             </p>
@@ -462,7 +528,7 @@ function detectModelFromName(name: string): string | null {
 }
 
 function AddPrinterModal({ onClose, onCreated, prefill }: AddPrinterModalProps) {
-  console.log("AddPrinterModal prefill:", prefill);
+  const { showToast } = useToast();
 
   // Try to get model from prefill, or detect from name
   const getInitialModel = () => {
@@ -533,10 +599,13 @@ function AddPrinterModal({ onClose, onCreated, prefill }: AddPrinterModalProps) 
         ip_address: ipAddress.trim(),
         access_code: accessCode.trim(),
       });
+      showToast('success', `Added printer "${name.trim() || serial.trim()}"`);
       onCreated();
     } catch (e) {
       console.error("Failed to create printer:", e);
-      setError(e instanceof Error ? e.message : "Failed to add printer");
+      const errorMsg = e instanceof Error ? e.message : "Failed to add printer";
+      setError(errorMsg);
+      showToast('error', errorMsg);
     } finally {
       setSaving(false);
     }

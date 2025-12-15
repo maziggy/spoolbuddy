@@ -13,6 +13,7 @@ from db import get_db
 from mqtt import PrinterManager
 from api import spools_router, printers_router
 from api.printers import set_printer_manager
+from api.cloud import router as cloud_router
 from models import PrinterState
 from tags import TagDecoder, SpoolEaseEncoder
 from usage_tracker import UsageTracker, estimate_weight_from_percent
@@ -197,6 +198,7 @@ app.add_middleware(
 # API routes
 app.include_router(spools_router, prefix="/api")
 app.include_router(printers_router, prefix="/api")
+app.include_router(cloud_router, prefix="/api")
 
 
 async def handle_tag_detected(websocket: WebSocket, message: dict):

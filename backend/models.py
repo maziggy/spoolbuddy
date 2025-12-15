@@ -155,3 +155,52 @@ class WSMessage(BaseModel):
     """WebSocket message wrapper."""
     type: str
     data: dict = {}
+
+
+# ============ Bambu Cloud Models ============
+
+class CloudLoginRequest(BaseModel):
+    """Request to login to Bambu Cloud."""
+    email: str
+    password: str
+
+
+class CloudVerifyRequest(BaseModel):
+    """Request to verify login with code."""
+    email: str
+    code: str
+
+
+class CloudTokenRequest(BaseModel):
+    """Request to set token directly."""
+    access_token: str
+
+
+class CloudLoginResponse(BaseModel):
+    """Response from login attempt."""
+    success: bool
+    needs_verification: bool = False
+    message: str
+
+
+class CloudAuthStatus(BaseModel):
+    """Cloud authentication status."""
+    is_authenticated: bool
+    email: Optional[str] = None
+
+
+class SlicerPreset(BaseModel):
+    """A slicer preset (filament, printer, or process)."""
+    setting_id: str
+    name: str
+    type: str  # filament, printer, process
+    version: Optional[str] = None
+    user_id: Optional[str] = None
+    is_custom: bool = False  # True if user's private preset
+
+
+class SlicerSettingsResponse(BaseModel):
+    """Response containing all slicer presets."""
+    filament: list[SlicerPreset] = []
+    printer: list[SlicerPreset] = []
+    process: list[SlicerPreset] = []
