@@ -152,6 +152,10 @@ fn run_headless(screen: &str) {
                 create_spool_detail_screen();
                 "spool_detail"
             }
+            "catalog" => {
+                create_catalog_screen();
+                "catalog"
+            }
             _ => {
                 create_home_screen();
                 "home"
@@ -2889,6 +2893,230 @@ unsafe fn create_setting_item_row2(parent: *mut lvgl_sys::lv_obj_t, x: i16, labe
     lvgl_sys::lv_obj_set_style_text_color(val, lv_color_hex(COLOR_WHITE), 0);
     lvgl_sys::lv_obj_set_style_text_font(val, &lvgl_sys::lv_font_montserrat_14, 0);
     lvgl_sys::lv_obj_set_pos(val, x, 50);
+}
+
+/// Create Catalog screen
+unsafe fn create_catalog_screen() {
+    let disp = lvgl_sys::lv_disp_get_default();
+    let scr = lvgl_sys::lv_disp_get_scr_act(disp);
+    lvgl_sys::lv_obj_set_style_bg_color(scr, lv_color_hex(COLOR_BG), 0);
+
+    // Header bar
+    let header = lvgl_sys::lv_obj_create(scr);
+    lvgl_sys::lv_obj_set_size(header, 800, 44);
+    lvgl_sys::lv_obj_set_pos(header, 0, 0);
+    lvgl_sys::lv_obj_clear_flag(header, lvgl_sys::LV_OBJ_FLAG_SCROLLABLE);
+    lvgl_sys::lv_obj_set_style_bg_color(header, lv_color_hex(COLOR_BG), 0);
+    lvgl_sys::lv_obj_set_style_border_width(header, 0, 0);
+    lvgl_sys::lv_obj_set_style_radius(header, 0, 0);
+    set_style_pad_all(header, 0);
+
+    // Back button
+    let back_lbl = lvgl_sys::lv_label_create(header);
+    let back_txt = CString::new("<").unwrap();
+    lvgl_sys::lv_label_set_text(back_lbl, back_txt.as_ptr());
+    lvgl_sys::lv_obj_set_style_text_color(back_lbl, lv_color_hex(COLOR_WHITE), 0);
+    lvgl_sys::lv_obj_set_style_text_font(back_lbl, &lvgl_sys::lv_font_montserrat_20, 0);
+    lvgl_sys::lv_obj_set_pos(back_lbl, 16, 10);
+
+    // Title
+    let title_lbl = lvgl_sys::lv_label_create(header);
+    let title_txt = CString::new("Spool Catalog").unwrap();
+    lvgl_sys::lv_label_set_text(title_lbl, title_txt.as_ptr());
+    lvgl_sys::lv_obj_set_style_text_color(title_lbl, lv_color_hex(COLOR_WHITE), 0);
+    lvgl_sys::lv_obj_set_style_text_font(title_lbl, &lvgl_sys::lv_font_montserrat_16, 0);
+    lvgl_sys::lv_obj_set_pos(title_lbl, 46, 12);
+
+    // Time
+    let time_lbl = lvgl_sys::lv_label_create(header);
+    let time_txt = CString::new("14:23").unwrap();
+    lvgl_sys::lv_label_set_text(time_lbl, time_txt.as_ptr());
+    lvgl_sys::lv_obj_set_style_text_color(time_lbl, lv_color_hex(COLOR_TEXT_MUTED), 0);
+    lvgl_sys::lv_obj_set_style_text_font(time_lbl, &lvgl_sys::lv_font_montserrat_14, 0);
+    lvgl_sys::lv_obj_align(time_lbl, lvgl_sys::LV_ALIGN_TOP_RIGHT as u8, -16, 14);
+
+    // Search bar
+    let search_bar = lvgl_sys::lv_obj_create(scr);
+    lvgl_sys::lv_obj_set_size(search_bar, 280, 36);
+    lvgl_sys::lv_obj_set_pos(search_bar, 16, 52);
+    lvgl_sys::lv_obj_clear_flag(search_bar, lvgl_sys::LV_OBJ_FLAG_SCROLLABLE);
+    lvgl_sys::lv_obj_set_style_bg_color(search_bar, lv_color_hex(0x2D2D2D), 0);
+    lvgl_sys::lv_obj_set_style_radius(search_bar, 18, 0);
+    lvgl_sys::lv_obj_set_style_border_width(search_bar, 0, 0);
+    set_style_pad_all(search_bar, 0);
+
+    // Search icon (Q)
+    let search_icon = lvgl_sys::lv_label_create(search_bar);
+    let search_icon_txt = CString::new("Q").unwrap();
+    lvgl_sys::lv_label_set_text(search_icon, search_icon_txt.as_ptr());
+    lvgl_sys::lv_obj_set_style_text_color(search_icon, lv_color_hex(COLOR_TEXT_MUTED), 0);
+    lvgl_sys::lv_obj_set_style_text_font(search_icon, &lvgl_sys::lv_font_montserrat_14, 0);
+    lvgl_sys::lv_obj_set_pos(search_icon, 14, 9);
+
+    let search_txt_lbl = lvgl_sys::lv_label_create(search_bar);
+    let search_txt = CString::new("Search spools...").unwrap();
+    lvgl_sys::lv_label_set_text(search_txt_lbl, search_txt.as_ptr());
+    lvgl_sys::lv_obj_set_style_text_color(search_txt_lbl, lv_color_hex(COLOR_TEXT_MUTED), 0);
+    lvgl_sys::lv_obj_set_style_text_font(search_txt_lbl, &lvgl_sys::lv_font_montserrat_12, 0);
+    lvgl_sys::lv_obj_set_pos(search_txt_lbl, 36, 10);
+
+    // Filter pills
+    let pills_x: i16 = 310;
+    create_filter_pill(scr, pills_x, 52, "All (24)", true);
+    create_filter_pill(scr, pills_x + 80, 52, "In AMS (6)", false);
+    create_filter_pill(scr, pills_x + 170, 52, "PLA", false);
+    create_filter_pill(scr, pills_x + 220, 52, "PETG", false);
+
+    // Spool grid
+    let grid_y: i16 = 100;
+    let card_w: i16 = 180;
+    let card_h: i16 = 110;
+    let gap: i16 = 12;
+
+    // Spool data: (material, color_name, color_hex, weight, pct, slot)
+    let spools = [
+        ("PLA Basic", "Yellow", 0xF5C518, "847g", "85%", "A1"),
+        ("PETG HF", "Black", 0x333333, "620g", "62%", "A2"),
+        ("PETG Basic", "Orange", 0xFF9800, "450g", "45%", "A3"),
+        ("PLA Matte", "Gray", 0x9E9E9E, "900g", "90%", "A4"),
+        ("PLA Silk", "Pink", 0xE91E63, "720g", "72%", "B1"),
+        ("PLA Basic", "Blue", 0x2196F3, "550g", "55%", "B2"),
+        ("PLA Basic", "Red", 0xF44336, "1000g", "100%", ""),
+        ("PETG HF", "Green", 0x4CAF50, "880g", "88%", ""),
+        ("PLA Basic", "White", 0xFFFFFF, "750g", "75%", ""),
+        ("ABS", "Purple", 0x673AB7, "780g", "78%", ""),
+        ("TPU 95A", "Lime", 0xCDDC39, "920g", "92%", ""),
+        ("PETG Basic", "Cyan", 0x00BCD4, "650g", "65%", ""),
+    ];
+
+    for (i, (material, color_name, color_hex, weight, pct, slot)) in spools.iter().enumerate() {
+        let col = (i % 4) as i16;
+        let row = (i / 4) as i16;
+        let x = 16 + col * (card_w + gap);
+        let y = grid_y + row * (card_h + gap);
+
+        create_catalog_card(scr, x, y, card_w, card_h, material, color_name, *color_hex, weight, pct, slot);
+    }
+}
+
+/// Helper: Create filter pill
+unsafe fn create_filter_pill(parent: *mut lvgl_sys::lv_obj_t, x: i16, y: i16, text: &str, active: bool) {
+    let pill = lvgl_sys::lv_obj_create(parent);
+    let w: i16 = if text.len() > 8 { 75 } else { 50 };
+    lvgl_sys::lv_obj_set_size(pill, w, 36);
+    lvgl_sys::lv_obj_set_pos(pill, x, y);
+    lvgl_sys::lv_obj_clear_flag(pill, lvgl_sys::LV_OBJ_FLAG_SCROLLABLE);
+    lvgl_sys::lv_obj_set_style_radius(pill, 18, 0);
+    set_style_pad_all(pill, 0);
+
+    if active {
+        lvgl_sys::lv_obj_set_style_bg_color(pill, lv_color_hex(COLOR_ACCENT), 0);
+        lvgl_sys::lv_obj_set_style_border_width(pill, 0, 0);
+    } else {
+        lvgl_sys::lv_obj_set_style_bg_color(pill, lv_color_hex(0x2D2D2D), 0);
+        lvgl_sys::lv_obj_set_style_border_width(pill, 1, 0);
+        lvgl_sys::lv_obj_set_style_border_color(pill, lv_color_hex(0x505050), 0);
+    }
+
+    let lbl = lvgl_sys::lv_label_create(pill);
+    let lbl_txt = CString::new(text).unwrap();
+    lvgl_sys::lv_label_set_text(lbl, lbl_txt.as_ptr());
+    let text_color = if active { 0x000000 } else { COLOR_WHITE };
+    lvgl_sys::lv_obj_set_style_text_color(lbl, lv_color_hex(text_color), 0);
+    lvgl_sys::lv_obj_set_style_text_font(lbl, &lvgl_sys::lv_font_montserrat_12, 0);
+    lvgl_sys::lv_obj_align(lbl, lvgl_sys::LV_ALIGN_CENTER as u8, 0, 0);
+}
+
+/// Helper: Create catalog card
+unsafe fn create_catalog_card(
+    parent: *mut lvgl_sys::lv_obj_t,
+    x: i16, y: i16, w: i16, h: i16,
+    material: &str, color_name: &str, color_hex: u32, weight: &str, pct: &str, slot: &str,
+) {
+    let card = lvgl_sys::lv_obj_create(parent);
+    lvgl_sys::lv_obj_set_size(card, w, h);
+    lvgl_sys::lv_obj_set_pos(card, x, y);
+    lvgl_sys::lv_obj_clear_flag(card, lvgl_sys::LV_OBJ_FLAG_SCROLLABLE);
+    lvgl_sys::lv_obj_set_style_bg_color(card, lv_color_hex(0x2D2D2D), 0);
+    lvgl_sys::lv_obj_set_style_radius(card, 8, 0);
+    lvgl_sys::lv_obj_set_style_border_width(card, 0, 0);
+    set_style_pad_all(card, 10);
+
+    // Spool visual (simplified circle)
+    let spool_size: i16 = 50;
+    let spool = lvgl_sys::lv_obj_create(card);
+    lvgl_sys::lv_obj_set_size(spool, spool_size, spool_size);
+    lvgl_sys::lv_obj_set_pos(spool, 5, 10);
+    lvgl_sys::lv_obj_clear_flag(spool, lvgl_sys::LV_OBJ_FLAG_SCROLLABLE);
+    lvgl_sys::lv_obj_set_style_bg_color(spool, lv_color_hex(color_hex), 0);
+    lvgl_sys::lv_obj_set_style_radius(spool, spool_size / 2, 0);
+    lvgl_sys::lv_obj_set_style_border_color(spool, lv_color_hex(lighten_color(color_hex, 30)), 0);
+    lvgl_sys::lv_obj_set_style_border_width(spool, 2, 0);
+    set_style_pad_all(spool, 0);
+
+    // Inner circle (spool hole)
+    let inner_size: i16 = 16;
+    let inner = lvgl_sys::lv_obj_create(spool);
+    lvgl_sys::lv_obj_set_size(inner, inner_size, inner_size);
+    lvgl_sys::lv_obj_align(inner, lvgl_sys::LV_ALIGN_CENTER as u8, 0, 0);
+    lvgl_sys::lv_obj_clear_flag(inner, lvgl_sys::LV_OBJ_FLAG_SCROLLABLE);
+    lvgl_sys::lv_obj_set_style_bg_color(inner, lv_color_hex(0x2D2D2D), 0);
+    lvgl_sys::lv_obj_set_style_radius(inner, inner_size / 2, 0);
+    lvgl_sys::lv_obj_set_style_border_color(inner, lv_color_hex(0x505050), 0);
+    lvgl_sys::lv_obj_set_style_border_width(inner, 1, 0);
+    set_style_pad_all(inner, 0);
+
+    // Slot badge (if assigned)
+    if !slot.is_empty() {
+        let badge = lvgl_sys::lv_obj_create(card);
+        lvgl_sys::lv_obj_set_size(badge, 26, 18);
+        lvgl_sys::lv_obj_set_pos(badge, w - 40, 5);
+        lvgl_sys::lv_obj_clear_flag(badge, lvgl_sys::LV_OBJ_FLAG_SCROLLABLE);
+        lvgl_sys::lv_obj_set_style_bg_color(badge, lv_color_hex(COLOR_ACCENT), 0);
+        lvgl_sys::lv_obj_set_style_radius(badge, 9, 0);
+        lvgl_sys::lv_obj_set_style_border_width(badge, 0, 0);
+        set_style_pad_all(badge, 0);
+
+        let badge_lbl = lvgl_sys::lv_label_create(badge);
+        let badge_txt = CString::new(slot).unwrap();
+        lvgl_sys::lv_label_set_text(badge_lbl, badge_txt.as_ptr());
+        lvgl_sys::lv_obj_set_style_text_color(badge_lbl, lv_color_hex(0x000000), 0);
+        lvgl_sys::lv_obj_set_style_text_font(badge_lbl, &lvgl_sys::lv_font_montserrat_10, 0);
+        lvgl_sys::lv_obj_align(badge_lbl, lvgl_sys::LV_ALIGN_CENTER as u8, 0, 0);
+    }
+
+    // Material name
+    let mat_lbl = lvgl_sys::lv_label_create(card);
+    let mat_txt = CString::new(material).unwrap();
+    lvgl_sys::lv_label_set_text(mat_lbl, mat_txt.as_ptr());
+    lvgl_sys::lv_obj_set_style_text_color(mat_lbl, lv_color_hex(COLOR_WHITE), 0);
+    lvgl_sys::lv_obj_set_style_text_font(mat_lbl, &lvgl_sys::lv_font_montserrat_12, 0);
+    lvgl_sys::lv_obj_set_pos(mat_lbl, 65, 10);
+
+    // Color dot + name
+    let dot = lvgl_sys::lv_obj_create(card);
+    lvgl_sys::lv_obj_set_size(dot, 10, 10);
+    lvgl_sys::lv_obj_set_pos(dot, 65, 30);
+    lvgl_sys::lv_obj_clear_flag(dot, lvgl_sys::LV_OBJ_FLAG_SCROLLABLE);
+    lvgl_sys::lv_obj_set_style_bg_color(dot, lv_color_hex(color_hex), 0);
+    lvgl_sys::lv_obj_set_style_radius(dot, 5, 0);
+    lvgl_sys::lv_obj_set_style_border_width(dot, 0, 0);
+    set_style_pad_all(dot, 0);
+
+    let color_lbl = lvgl_sys::lv_label_create(card);
+    let color_txt = CString::new(color_name).unwrap();
+    lvgl_sys::lv_label_set_text(color_lbl, color_txt.as_ptr());
+    lvgl_sys::lv_obj_set_style_text_color(color_lbl, lv_color_hex(COLOR_TEXT_MUTED), 0);
+    lvgl_sys::lv_obj_set_style_text_font(color_lbl, &lvgl_sys::lv_font_montserrat_10, 0);
+    lvgl_sys::lv_obj_set_pos(color_lbl, 80, 28);
+
+    // Weight + percentage
+    let weight_lbl = lvgl_sys::lv_label_create(card);
+    let weight_txt = CString::new(format!("{} ({})", weight, pct)).unwrap();
+    lvgl_sys::lv_label_set_text(weight_lbl, weight_txt.as_ptr());
+    lvgl_sys::lv_obj_set_style_text_color(weight_lbl, lv_color_hex(COLOR_TEXT_MUTED), 0);
+    lvgl_sys::lv_obj_set_style_text_font(weight_lbl, &lvgl_sys::lv_font_montserrat_10, 0);
+    lvgl_sys::lv_obj_set_pos(weight_lbl, 65, 48);
 }
 
 fn lv_color_hex(hex: u32) -> lvgl_sys::lv_color_t {
