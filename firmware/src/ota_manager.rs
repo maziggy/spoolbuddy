@@ -9,6 +9,8 @@
 //! Note: Power loss during flash write (~10s) will brick device,
 //! requiring USB recovery. Acceptable for constant-power deployments.
 
+#![allow(dead_code)]
+
 use esp_idf_svc::http::client::{Configuration as HttpConfig, EspHttpConnection};
 use esp_idf_sys::{
     esp_partition_find, esp_partition_erase_range, esp_partition_write,

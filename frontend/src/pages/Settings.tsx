@@ -156,20 +156,20 @@ export function Settings() {
   // Device update state
   const [deviceUpdating, setDeviceUpdating] = useState(false);
 
-  // Trigger device OTA update (reboot device to apply)
+  // Trigger device OTA update
   const handleTriggerOTA = useCallback(async () => {
     try {
       setDeviceUpdating(true);
-      showToast('info', 'Sending reboot command to device...');
-      await api.rebootESP32();
-      showToast('success', 'Device is rebooting to install update. This may take a minute.');
+      showToast('info', 'Sending update command to device...');
+      await api.triggerOTA();
+      showToast('success', 'Device is downloading and installing update. This may take a minute.');
       // Wait for device to disconnect and reconnect
       setTimeout(() => {
         setDeviceUpdating(false);
-      }, 60000); // Reset after 60s
+      }, 120000); // Reset after 2 min (OTA takes longer)
     } catch (e) {
       setDeviceUpdating(false);
-      showToast('error', 'Failed to send reboot command');
+      showToast('error', 'Failed to send update command');
     }
   }, [showToast]);
 

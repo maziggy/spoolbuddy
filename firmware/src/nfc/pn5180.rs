@@ -445,7 +445,7 @@ where
             // GPIO43 is in GPIO_OUT1 (bits 32-53), GPIO16 and GPIO8 are in GPIO_OUT (bits 0-31)
             let gpio_out = core::ptr::read_volatile(0x60004004 as *const u32);
             let gpio_out1 = core::ptr::read_volatile(0x60004010 as *const u32);
-            let gpio_in = core::ptr::read_volatile(0x6000403C as *const u32);
+            let _gpio_in = core::ptr::read_volatile(0x6000403C as *const u32);
             let gpio_in1 = core::ptr::read_volatile(0x60004040 as *const u32);
             info!("  GPIO_OUT1: 0x{:08X} (SCK(43)={})",
                 gpio_out1, (gpio_out1 >> (43 - 32)) & 1);

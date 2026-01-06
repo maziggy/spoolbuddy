@@ -323,8 +323,16 @@ fn send_heartbeat(base_url: &str) {
     if let Ok(n) = response.read(&mut buf) {
         if n > 0 {
             let body = String::from_utf8_lossy(&buf[..n]);
+            // Check for update command (triggers OTA)
+            if body.contains("\"command\":\"update\"") || body.contains("\"command\": \"update\"") {
+                log::info!("Received update command from backend - starting OTA");
+                if let Err(e) = crate::ota_manager::perform_update(base_url) {
+                    log::error!("OTA update failed: {}", e);
+                }
+                // perform_update reboots on success, so we only get here on failure
+            }
             // Check for reboot command
-            if body.contains("\"command\":\"reboot\"") || body.contains("\"command\": \"reboot\"") {
+            else if body.contains("\"command\":\"reboot\"") || body.contains("\"command\": \"reboot\"") {
                 log::info!("Received reboot command from backend");
                 std::thread::sleep(std::time::Duration::from_millis(500));
                 unsafe { esp_restart(); }

@@ -570,6 +570,12 @@ class ApiClient {
     });
   }
 
+  async triggerOTA(): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>("/device/update", {
+      method: "POST",
+    });
+  }
+
   async getDisplayStatus(): Promise<{ connected: boolean; last_seen: number | null; firmware_version: string | null }> {
     return this.request<{ connected: boolean; last_seen: number | null; firmware_version: string | null }>("/display/status");
   }

@@ -194,6 +194,18 @@ async def reboot_device():
     return {"success": True, "message": "Reboot command queued"}
 
 
+@router.post("/update")
+async def update_device():
+    """Send OTA update command to connected device."""
+    from main import is_display_connected, queue_display_command
+
+    if not is_display_connected():
+        raise HTTPException(status_code=400, detail="No device connected")
+
+    queue_display_command("update")
+    return {"success": True, "message": "Update command queued"}
+
+
 @router.post("/factory-reset")
 async def factory_reset_device():
     """Send factory reset command to connected device.
