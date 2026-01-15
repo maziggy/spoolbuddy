@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'preact/hooks'
 import { Modal } from './Modal'
 import { Spool, SpoolInput, Printer, CalibrationProfile, SlicerPreset, SpoolKProfile, CatalogEntry, api } from '../../lib/api'
-import { X, ChevronDown, ChevronRight, Cloud, CloudOff, Trash2 } from 'lucide-preact'
+import { X, ChevronDown, ChevronRight, Cloud, CloudOff, Trash2, Unlink } from 'lucide-preact'
 import { getFilamentOptions, COLOR_PRESETS } from './utils'
 import { useToast } from '../../lib/toast'
 
@@ -17,6 +17,7 @@ interface AddSpoolModalProps {
   onSave: (input: SpoolInput) => Promise<Spool>  // Returns the saved spool
   editSpool?: Spool | null  // If provided, we're editing
   onDelete?: (spool: Spool) => void  // Called when delete button is clicked
+  onTagRemoved?: () => void  // Called after tag is successfully removed
   printersWithCalibrations?: PrinterWithCalibrations[]
 }
 
@@ -247,7 +248,7 @@ function SpoolWeightPicker({ catalog, value, onChange }: {
   )
 }
 
-export function AddSpoolModal({ isOpen, onClose, onSave, editSpool, onDelete, printersWithCalibrations = [] }: AddSpoolModalProps) {
+export function AddSpoolModal({ isOpen, onClose, onSave, editSpool, onDelete, onTagRemoved, printersWithCalibrations = [] }: AddSpoolModalProps) {
   const [formData, setFormData] = useState<SpoolFormData>(defaultFormData)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -267,6 +268,10 @@ export function AddSpoolModal({ isOpen, onClose, onSave, editSpool, onDelete, pr
 
   // Separate state for preset input display (shows name, not code)
   const [presetInputValue, setPresetInputValue] = useState('')
+
+  // State for remove tag confirmation modal
+  const [showRemoveTagConfirm, setShowRemoveTagConfirm] = useState(false)
+  const [isRemovingTag, setIsRemovingTag] = useState(false)
 
   const isEditing = !!editSpool
 
@@ -338,6 +343,7 @@ export function AddSpoolModal({ isOpen, onClose, onSave, editSpool, onDelete, pr
       setError(null)
       setShowAllColors(false)
       setActiveTab('filament')
+      setShowRemoveTagConfirm(false)
       // Expand all printers by default
       setExpandedPrinters(new Set(printersWithCalibrations.map(p => p.printer.serial)))
     }
@@ -430,6 +436,31 @@ export function AddSpoolModal({ isOpen, onClose, onSave, editSpool, onDelete, pr
       updateToast(toastId, 'error', errorMsg)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleRemoveTag = async () => {
+    if (!editSpool) return
+
+    setIsRemovingTag(true)
+    const toastId = showToast('loading', 'Removing tag...')
+
+    try {
+      await api.updateSpool(editSpool.id, {
+        ...editSpool,
+        tag_id: null,
+        tag_type: null,
+      } as SpoolInput)
+
+      updateToast(toastId, 'success', 'Tag removed from spool')
+      setShowRemoveTagConfirm(false)
+      onTagRemoved?.()  // Notify parent to refresh
+      onClose()
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : 'Failed to remove tag'
+      updateToast(toastId, 'error', errorMsg)
+    } finally {
+      setIsRemovingTag(false)
     }
   }
 
@@ -623,7 +654,7 @@ export function AddSpoolModal({ isOpen, onClose, onSave, editSpool, onDelete, pr
       size="lg"
       footer={
         <div class="flex justify-between w-full">
-          <div>
+          <div class="flex gap-2">
             {isEditing && onDelete && editSpool && (
               <button
                 class="btn btn-danger"
@@ -635,6 +666,17 @@ export function AddSpoolModal({ isOpen, onClose, onSave, editSpool, onDelete, pr
               >
                 <Trash2 class="w-4 h-4" />
                 Delete
+              </button>
+            )}
+            {isEditing && editSpool?.tag_id && (
+              <button
+                class="btn btn-secondary"
+                onClick={() => setShowRemoveTagConfirm(true)}
+                disabled={isSubmitting}
+                title="Remove NFC tag from this spool"
+              >
+                <Unlink class="w-4 h-4" />
+                Remove Tag
               </button>
             )}
           </div>
@@ -1084,6 +1126,42 @@ export function AddSpoolModal({ isOpen, onClose, onSave, editSpool, onDelete, pr
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Remove Tag Confirmation Modal */}
+      {showRemoveTagConfirm && (
+        <div class="fixed inset-0 z-[60] flex items-center justify-center">
+          <div class="absolute inset-0 bg-black/50" onClick={() => setShowRemoveTagConfirm(false)} />
+          <div class="relative bg-[var(--bg-primary)] rounded-lg border border-[var(--border-color)] p-6 max-w-md shadow-xl">
+            <h3 class="text-lg font-semibold text-[var(--text-primary)] mb-2">
+              Remove NFC Tag?
+            </h3>
+            <p class="text-sm text-[var(--text-secondary)] mb-4">
+              This will unlink the NFC tag from this spool. The tag can then be assigned to a different spool.
+            </p>
+            {editSpool?.tag_id && (
+              <p class="text-xs text-[var(--text-muted)] font-mono mb-4 p-2 bg-[var(--bg-tertiary)] rounded">
+                Tag ID: {editSpool.tag_id}
+              </p>
+            )}
+            <div class="flex justify-end gap-2">
+              <button
+                class="btn"
+                onClick={() => setShowRemoveTagConfirm(false)}
+                disabled={isRemovingTag}
+              >
+                Cancel
+              </button>
+              <button
+                class="btn btn-danger"
+                onClick={handleRemoveTag}
+                disabled={isRemovingTag}
+              >
+                {isRemovingTag ? 'Removing...' : 'Remove Tag'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Modal>

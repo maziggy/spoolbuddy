@@ -212,6 +212,7 @@ export function Inventory() {
         onSave={handleEditSpool}
         editSpool={editSpool}
         onDelete={(spool) => setDeleteSpool(spool)}
+        onTagRemoved={loadSpools}
         printersWithCalibrations={printersWithCalibrations}
       />
 

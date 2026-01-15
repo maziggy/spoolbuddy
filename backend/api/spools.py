@@ -35,6 +35,13 @@ class SaveKProfilesRequest(BaseModel):
     profiles: list[KProfileInput]
 
 
+class LinkTagRequest(BaseModel):
+    """Request to link an NFC tag to an existing spool."""
+    tag_id: str  # Base64-encoded NFC UID (or hex string)
+    tag_type: Optional[str] = None  # e.g., "bambu", "generic", "unknown"
+    data_origin: Optional[str] = None  # e.g., "nfc_link"
+
+
 router = APIRouter(prefix="/spools", tags=["spools"])
 
 
@@ -43,6 +50,17 @@ async def list_spools():
     """Get all spools."""
     db = await get_db()
     return await db.get_spools()
+
+
+@router.get("/untagged", response_model=list[Spool])
+async def list_untagged_spools():
+    """Get all spools without an NFC tag assigned.
+
+    Use this to find spools that can be linked to a new tag.
+    Returns spools where tag_id is NULL or empty string.
+    """
+    db = await get_db()
+    return await db.get_untagged_spools()
 
 
 @router.get("/{spool_id}", response_model=Spool)
@@ -78,6 +96,45 @@ async def delete_spool(spool_id: str):
     db = await get_db()
     if not await db.delete_spool(spool_id):
         raise HTTPException(status_code=404, detail="Spool not found")
+
+
+@router.patch("/{spool_id}/link-tag", response_model=Spool)
+async def link_tag_to_spool(spool_id: str, request: LinkTagRequest):
+    """Link an NFC tag to an existing spool.
+
+    Use this to associate a tag_id with a spool that was created without one
+    (e.g., via web frontend). This is useful when users want to tag existing
+    spools in their inventory.
+
+    Returns:
+        Updated spool with tag_id set
+
+    Raises:
+        404: Spool not found
+        409: Tag is already assigned to another spool
+    """
+    db = await get_db()
+
+    # Check if spool exists
+    spool = await db.get_spool(spool_id)
+    if not spool:
+        raise HTTPException(status_code=404, detail="Spool not found")
+
+    # Check if tag is already assigned to another spool
+    existing_spool = await db.get_spool_by_tag(request.tag_id)
+    if existing_spool and existing_spool.id != spool_id:
+        detail = f"Tag already assigned to spool: {existing_spool.brand or 'Unknown'} {existing_spool.material}"
+        raise HTTPException(status_code=409, detail=detail)
+
+    # Link the tag
+    updated = await db.link_tag_to_spool(
+        spool_id,
+        request.tag_id,
+        request.tag_type,
+        request.data_origin or "nfc_link"
+    )
+
+    return updated
 
 
 @router.post("/{spool_id}/weight", response_model=Spool)

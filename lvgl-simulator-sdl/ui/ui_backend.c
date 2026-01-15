@@ -2367,12 +2367,46 @@ static void update_status_bar(void) {
         const char *subtype = nfc_get_tag_material_subtype();
 
         char status_msg[128];
-        if (subtype && subtype[0]) {
-            snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_RIGHT " %s %s %s (%.0fs) - tap to view",
-                     vendor, material, subtype, remaining);
+        bool just_added = nfc_is_spool_just_added();
+
+        // For "just added" messages, use stored vendor/material (they're reliable)
+        // Fall back to tag cache for non-just-added cases
+        const char *display_vendor = just_added ? nfc_get_just_added_vendor() : vendor;
+        const char *display_material = just_added ? nfc_get_just_added_material() : material;
+        bool has_spool_info = (display_vendor && display_vendor[0] && display_material && display_material[0]);
+
+        if (just_added) {
+            // Spool was just added/linked - show confirmation message
+            if (has_spool_info) {
+                // Show added spool info
+                snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_OK " Added: %s %s (%.0fs)",
+                         display_vendor, display_material, remaining);
+            } else {
+                // Unknown tag was added - show tag ID
+                const char *tag_id = nfc_get_just_added_tag_id();
+                if (tag_id && tag_id[0]) {
+                    // Show abbreviated tag ID (first 8 chars)
+                    char short_tag[12];
+                    strncpy(short_tag, tag_id, 8);
+                    short_tag[8] = '\0';
+                    snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_OK " Added spool with tag #%s (%.0fs)",
+                             short_tag, remaining);
+                } else {
+                    snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_OK " Spool added (%.0fs)", remaining);
+                }
+            }
+        } else if (has_spool_info) {
+            // Known spool - show vendor/material info
+            if (subtype && subtype[0]) {
+                snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_RIGHT " %s %s %s (%.0fs) - tap to view",
+                         vendor, material, subtype, remaining);
+            } else {
+                snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_RIGHT " %s %s (%.0fs) - tap to view",
+                         vendor, material, remaining);
+            }
         } else {
-            snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_RIGHT " %s %s (%.0fs) - tap to view",
-                     vendor, material, remaining);
+            // Unknown tag - show generic message
+            snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_RIGHT " New tag detected (%.0fs) - tap to add", remaining);
         }
 
         lv_label_set_text(objects.bottom_bar_message, status_msg);
@@ -2406,6 +2440,41 @@ static void update_status_bar(void) {
                 lv_anim_start(&anim);
                 led_anim_active = true;
             }
+        }
+    } else if (nfc_is_spool_just_added()) {
+        // Staging expired but spool was just added - show persistent confirmation message
+        char status_msg[128];
+        const char *display_vendor = nfc_get_just_added_vendor();
+        const char *display_material = nfc_get_just_added_material();
+        bool has_spool_info = (display_vendor && display_vendor[0] && display_material && display_material[0]);
+
+        if (has_spool_info) {
+            snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_OK " Added: %s %s",
+                     display_vendor, display_material);
+        } else {
+            const char *tag_id = nfc_get_just_added_tag_id();
+            if (tag_id && tag_id[0]) {
+                char short_tag[12];
+                strncpy(short_tag, tag_id, 8);
+                short_tag[8] = '\0';
+                snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_OK " Added spool with tag #%s", short_tag);
+            } else {
+                snprintf(status_msg, sizeof(status_msg), LV_SYMBOL_OK " Spool added");
+            }
+        }
+
+        lv_label_set_text(objects.bottom_bar_message, status_msg);
+        lv_obj_set_style_text_color(objects.bottom_bar_message, lv_color_hex(0x00FF88), 0);  // Green
+
+        // Show LED with green color (no pulsing for persistent message)
+        if (objects.bottom_bar_message_dot) {
+            if (led_anim_active) {
+                lv_anim_delete(objects.bottom_bar_message_dot, led_pulse_anim_cb);
+                led_anim_active = false;
+            }
+            lv_obj_clear_flag(objects.bottom_bar_message_dot, LV_OBJ_FLAG_HIDDEN);
+            lv_led_set_color(objects.bottom_bar_message_dot, lv_color_hex(0x00FF88));
+            lv_led_set_brightness(objects.bottom_bar_message_dot, 255);
         }
     } else if (update_available) {
         // Set message text and color (yellow for update notification)

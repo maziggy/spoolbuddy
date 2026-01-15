@@ -48,6 +48,18 @@ static bool g_staging_cleared_locally = false;
 static time_t g_staging_cleared_time = 0;
 #define STAGING_CLEAR_HOLDOFF_SEC 3
 
+// When tag cache is updated locally (after add/link), prevent poll from overwriting
+// Use long holdoff (matches staging duration) so cache persists while tag is present
+static bool g_tag_cache_updated_locally = false;
+static time_t g_tag_cache_update_time = 0;
+#define TAG_CACHE_HOLDOFF_SEC 300
+
+// Track "just added" state for status bar message
+static bool g_spool_just_added = false;
+static char g_just_added_tag_id[64] = "";
+static char g_just_added_vendor[32] = "";
+static char g_just_added_material[32] = "";
+
 // Response buffer for curl
 typedef struct {
     char *data;
@@ -396,6 +408,12 @@ int backend_poll(void) {
             g_nfc_tag_present = true;
             if (!was_present) {
                 printf("[backend] NFC tag synced from device - popup should appear\n");
+                // Clear "just added" flag when a NEW tag is placed
+                // (so we don't show stale message from previous spool)
+                g_spool_just_added = false;
+                g_just_added_tag_id[0] = '\0';
+                g_just_added_vendor[0] = '\0';
+                g_just_added_material[0] = '\0';
             }
 
             item = cJSON_GetObjectItem(tag_data, "uid");
@@ -410,29 +428,44 @@ int backend_poll(void) {
                 }
             }
 
-            item = cJSON_GetObjectItem(tag_data, "vendor");
-            if (item && item->valuestring) strncpy(g_tag_vendor, item->valuestring, sizeof(g_tag_vendor) - 1);
+            // Check holdoff - don't overwrite local cache updates for a few seconds
+            bool skip_tag_data_update = false;
+            if (g_tag_cache_updated_locally) {
+                time_t now = time(NULL);
+                if (difftime(now, g_tag_cache_update_time) < TAG_CACHE_HOLDOFF_SEC) {
+                    skip_tag_data_update = true;
+                } else {
+                    // Holdoff expired
+                    g_tag_cache_updated_locally = false;
+                    printf("[backend] Tag cache holdoff expired, allowing poll updates\n");
+                }
+            }
 
-            item = cJSON_GetObjectItem(tag_data, "material");
-            if (item && item->valuestring) strncpy(g_tag_material, item->valuestring, sizeof(g_tag_material) - 1);
+            if (!skip_tag_data_update) {
+                item = cJSON_GetObjectItem(tag_data, "vendor");
+                if (item && item->valuestring) strncpy(g_tag_vendor, item->valuestring, sizeof(g_tag_vendor) - 1);
 
-            item = cJSON_GetObjectItem(tag_data, "subtype");
-            if (item && item->valuestring) strncpy(g_tag_material_subtype, item->valuestring, sizeof(g_tag_material_subtype) - 1);
+                item = cJSON_GetObjectItem(tag_data, "material");
+                if (item && item->valuestring) strncpy(g_tag_material, item->valuestring, sizeof(g_tag_material) - 1);
 
-            item = cJSON_GetObjectItem(tag_data, "color_name");
-            if (item && item->valuestring) strncpy(g_tag_color_name, item->valuestring, sizeof(g_tag_color_name) - 1);
+                item = cJSON_GetObjectItem(tag_data, "subtype");
+                if (item && item->valuestring) strncpy(g_tag_material_subtype, item->valuestring, sizeof(g_tag_material_subtype) - 1);
 
-            item = cJSON_GetObjectItem(tag_data, "color_rgba");
-            if (item) g_tag_color_rgba = (uint32_t)item->valuedouble;  // Use valuedouble for large unsigned values
+                item = cJSON_GetObjectItem(tag_data, "color_name");
+                if (item && item->valuestring) strncpy(g_tag_color_name, item->valuestring, sizeof(g_tag_color_name) - 1);
 
-            item = cJSON_GetObjectItem(tag_data, "spool_weight");
-            if (item) g_tag_spool_weight = item->valueint;
+                item = cJSON_GetObjectItem(tag_data, "color_rgba");
+                if (item) g_tag_color_rgba = (uint32_t)item->valuedouble;  // Use valuedouble for large unsigned values
 
-            item = cJSON_GetObjectItem(tag_data, "tag_type");
-            if (item && item->valuestring) strncpy(g_tag_type, item->valuestring, sizeof(g_tag_type) - 1);
+                item = cJSON_GetObjectItem(tag_data, "spool_weight");
+                if (item) g_tag_spool_weight = item->valueint;
 
-            item = cJSON_GetObjectItem(tag_data, "slicer_filament");
-            if (item && item->valuestring) strncpy(g_tag_slicer_filament, item->valuestring, sizeof(g_tag_slicer_filament) - 1);
+                item = cJSON_GetObjectItem(tag_data, "tag_type");
+                if (item && item->valuestring) strncpy(g_tag_type, item->valuestring, sizeof(g_tag_type) - 1);
+
+                item = cJSON_GetObjectItem(tag_data, "slicer_filament");
+                if (item && item->valuestring) strncpy(g_tag_slicer_filament, item->valuestring, sizeof(g_tag_slicer_filament) - 1);
+            }
         } else {
             // Staging expired or no tag - clear simulator NFC state
             if (g_nfc_tag_present) {
@@ -446,6 +479,9 @@ int backend_poll(void) {
                 g_tag_spool_weight = 0;
                 g_tag_type[0] = '\0';
                 g_tag_slicer_filament[0] = '\0';
+                // Clear holdoff when tag is removed
+                g_tag_cache_updated_locally = false;
+                // NOTE: Don't clear "just added" flag here - let message persist after tag removed
             }
         }
 
@@ -1022,6 +1058,148 @@ bool spool_get_k_profile_for_printer(const char *spool_id, const char *printer_s
     return false;
 }
 
+// Get list of spools without NFC tags
+int spool_get_untagged_list(UntaggedSpoolInfo *spools, int max_count) {
+    if (!spools || max_count <= 0 || !g_curl) {
+        return 0;
+    }
+
+    char url[512];
+    snprintf(url, sizeof(url), "%s/api/spools/untagged", g_base_url);
+
+    ResponseBuffer response = {0};
+
+    curl_easy_reset(g_curl);
+    curl_easy_setopt(g_curl, CURLOPT_URL, url);
+    curl_easy_setopt(g_curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(g_curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(g_curl, CURLOPT_TIMEOUT, 5L);
+
+    CURLcode res = curl_easy_perform(g_curl);
+
+    int count = 0;
+    if (res == CURLE_OK && response.data) {
+        cJSON *json = cJSON_Parse(response.data);
+        if (json && cJSON_IsArray(json)) {
+            int array_size = cJSON_GetArraySize(json);
+            for (int i = 0; i < array_size && count < max_count; i++) {
+                cJSON *spool = cJSON_GetArrayItem(json, i);
+                if (!spool) continue;
+
+                UntaggedSpoolInfo *info = &spools[count];
+                memset(info, 0, sizeof(UntaggedSpoolInfo));
+
+                cJSON *field;
+                field = cJSON_GetObjectItem(spool, "id");
+                if (field && field->valuestring)
+                    strncpy(info->id, field->valuestring, sizeof(info->id) - 1);
+
+                field = cJSON_GetObjectItem(spool, "brand");
+                if (field && field->valuestring)
+                    strncpy(info->brand, field->valuestring, sizeof(info->brand) - 1);
+
+                field = cJSON_GetObjectItem(spool, "material");
+                if (field && field->valuestring)
+                    strncpy(info->material, field->valuestring, sizeof(info->material) - 1);
+
+                field = cJSON_GetObjectItem(spool, "color_name");
+                if (field && field->valuestring)
+                    strncpy(info->color_name, field->valuestring, sizeof(info->color_name) - 1);
+
+                field = cJSON_GetObjectItem(spool, "rgba");
+                if (field && field->valuestring) {
+                    char rgba_padded[16] = {0};
+                    size_t len = strlen(field->valuestring);
+                    strncpy(rgba_padded, field->valuestring, sizeof(rgba_padded) - 1);
+                    if (len == 6) strcat(rgba_padded, "FF");
+                    info->color_rgba = (uint32_t)strtoul(rgba_padded, NULL, 16);
+                }
+
+                field = cJSON_GetObjectItem(spool, "label_weight");
+                if (field && cJSON_IsNumber(field))
+                    info->label_weight = field->valueint;
+
+                field = cJSON_GetObjectItem(spool, "spool_number");
+                if (field && cJSON_IsNumber(field))
+                    info->spool_number = field->valueint;
+
+                info->valid = true;
+                count++;
+            }
+        }
+        cJSON_Delete(json);
+    }
+
+    free(response.data);
+    printf("[backend] spool_get_untagged_list: found %d untagged spools\n", count);
+    return count;
+}
+
+// Link an NFC tag to an existing spool
+bool spool_link_tag(const char *spool_id, const char *tag_id, const char *tag_type) {
+    if (!spool_id || !tag_id || !g_curl) {
+        printf("[backend] spool_link_tag: invalid params\n");
+        return false;
+    }
+
+    char url[512];
+    snprintf(url, sizeof(url), "%s/api/spools/%s/link-tag", g_base_url, spool_id);
+
+    // Build JSON body
+    cJSON *json = cJSON_CreateObject();
+    cJSON_AddStringToObject(json, "tag_id", tag_id);
+    if (tag_type && tag_type[0]) {
+        cJSON_AddStringToObject(json, "tag_type", tag_type);
+    }
+    cJSON_AddStringToObject(json, "data_origin", "nfc_link");
+
+    char *body = cJSON_PrintUnformatted(json);
+    cJSON_Delete(json);
+
+    if (!body) {
+        printf("[backend] spool_link_tag: failed to create JSON\n");
+        return false;
+    }
+
+    printf("[backend] spool_link_tag: PATCH %s\n", url);
+    printf("[backend] payload: %s\n", body);
+
+    ResponseBuffer response = {0};
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+
+    curl_easy_reset(g_curl);
+    curl_easy_setopt(g_curl, CURLOPT_URL, url);
+    curl_easy_setopt(g_curl, CURLOPT_CUSTOMREQUEST, "PATCH");
+    curl_easy_setopt(g_curl, CURLOPT_POSTFIELDS, body);
+    curl_easy_setopt(g_curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(g_curl, CURLOPT_WRITEFUNCTION, write_callback);
+    curl_easy_setopt(g_curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(g_curl, CURLOPT_TIMEOUT, 5L);
+
+    CURLcode res = curl_easy_perform(g_curl);
+
+    long http_code = 0;
+    curl_easy_getinfo(g_curl, CURLINFO_RESPONSE_CODE, &http_code);
+
+    curl_slist_free_all(headers);
+    free(body);
+
+    bool success = (res == CURLE_OK && http_code == 200);
+
+    if (success) {
+        printf("[backend] Tag linked to spool: %s\n", spool_id);
+    } else {
+        printf("[backend] Failed to link tag: HTTP %ld, curl %d\n", http_code, res);
+        if (response.data) {
+            printf("[backend] Response: %s\n", response.data);
+        }
+    }
+
+    free(response.data);
+    return success;
+}
+
 // =============================================================================
 // AMS Slot Assignment functions
 // =============================================================================
@@ -1305,6 +1483,7 @@ void staging_clear(void) {
     g_staging_remaining = 0;
     g_staging_cleared_locally = true;
     g_staging_cleared_time = time(NULL);
+    // NOTE: Don't clear "just added" flag here - let message persist
     printf("[backend] Staging cleared locally (holdoff active)\n");
 
     // Now send clear request to backend using a separate curl handle
@@ -1353,6 +1532,16 @@ uint8_t nfc_get_uid_hex(uint8_t *buf, uint8_t buf_len) {
 // Fetch decoded tag data from backend
 static void fetch_tag_data_from_backend(const char *tag_uid_hex) {
     if (!g_curl || !tag_uid_hex) return;
+
+    // Check holdoff - don't overwrite local cache updates
+    if (g_tag_cache_updated_locally) {
+        time_t now = time(NULL);
+        if (difftime(now, g_tag_cache_update_time) < TAG_CACHE_HOLDOFF_SEC) {
+            printf("[backend] Skipping tag fetch - holdoff active\n");
+            return;
+        }
+        g_tag_cache_updated_locally = false;
+    }
 
     char url[512];
     snprintf(url, sizeof(url), "%s/api/tags/decode?uid=%s", g_base_url, tag_uid_hex);
@@ -1464,6 +1653,103 @@ const char* nfc_get_tag_type(void) {
 
 const char* nfc_get_tag_slicer_filament(void) {
     return g_nfc_tag_present ? g_tag_slicer_filament : "";
+}
+
+void nfc_update_tag_cache(const char *vendor, const char *material, const char *subtype,
+                          const char *color_name, uint32_t color_rgba) {
+    // Use memmove instead of strncpy to handle overlapping buffers safely
+    // (the input pointers may point to the same static buffers we're writing to)
+    if (vendor && vendor != g_tag_vendor) {
+        memmove(g_tag_vendor, vendor, strlen(vendor) + 1 < sizeof(g_tag_vendor) ? strlen(vendor) + 1 : sizeof(g_tag_vendor) - 1);
+        g_tag_vendor[sizeof(g_tag_vendor) - 1] = '\0';
+    }
+    if (material && material != g_tag_material) {
+        memmove(g_tag_material, material, strlen(material) + 1 < sizeof(g_tag_material) ? strlen(material) + 1 : sizeof(g_tag_material) - 1);
+        g_tag_material[sizeof(g_tag_material) - 1] = '\0';
+    }
+    if (subtype && subtype != g_tag_material_subtype) {
+        memmove(g_tag_material_subtype, subtype, strlen(subtype) + 1 < sizeof(g_tag_material_subtype) ? strlen(subtype) + 1 : sizeof(g_tag_material_subtype) - 1);
+        g_tag_material_subtype[sizeof(g_tag_material_subtype) - 1] = '\0';
+    } else if (!subtype) {
+        g_tag_material_subtype[0] = '\0';
+    }
+    if (color_name && color_name != g_tag_color_name) {
+        memmove(g_tag_color_name, color_name, strlen(color_name) + 1 < sizeof(g_tag_color_name) ? strlen(color_name) + 1 : sizeof(g_tag_color_name) - 1);
+        g_tag_color_name[sizeof(g_tag_color_name) - 1] = '\0';
+    }
+    g_tag_color_rgba = color_rgba;
+
+    // Set holdoff to prevent poll from overwriting our update
+    g_tag_cache_updated_locally = true;
+    g_tag_cache_update_time = time(NULL);
+
+    printf("[nfc] Tag cache updated locally: %s %s %s (holdoff %ds)\n",
+           g_tag_vendor, g_tag_material, g_tag_color_name, TAG_CACHE_HOLDOFF_SEC);
+}
+
+// Set "just added" flag for status bar message
+// vendor/material are optional - pass NULL or empty string if unknown tag
+void nfc_set_spool_just_added(const char *tag_id, const char *vendor, const char *material) {
+    g_spool_just_added = true;
+
+    // Store tag ID
+    if (tag_id) {
+        strncpy(g_just_added_tag_id, tag_id, sizeof(g_just_added_tag_id) - 1);
+        g_just_added_tag_id[sizeof(g_just_added_tag_id) - 1] = '\0';
+    } else {
+        g_just_added_tag_id[0] = '\0';
+    }
+
+    // Store vendor (only if meaningful, not "Unknown" or empty)
+    if (vendor && vendor[0] && strcmp(vendor, "Unknown") != 0) {
+        strncpy(g_just_added_vendor, vendor, sizeof(g_just_added_vendor) - 1);
+        g_just_added_vendor[sizeof(g_just_added_vendor) - 1] = '\0';
+    } else {
+        g_just_added_vendor[0] = '\0';
+    }
+
+    // Store material (only if meaningful, not "Unknown" or empty)
+    if (material && material[0] && strcmp(material, "Unknown") != 0) {
+        strncpy(g_just_added_material, material, sizeof(g_just_added_material) - 1);
+        g_just_added_material[sizeof(g_just_added_material) - 1] = '\0';
+    } else {
+        g_just_added_material[0] = '\0';
+    }
+
+    // Also update tag cache if vendor/material provided
+    if (g_just_added_vendor[0] && g_just_added_material[0]) {
+        nfc_update_tag_cache(g_just_added_vendor, g_just_added_material, NULL, NULL, 0);
+    }
+
+    printf("[nfc] Spool just added: tag=%s vendor=%s material=%s\n",
+           g_just_added_tag_id, g_just_added_vendor, g_just_added_material);
+}
+
+// Check if a spool was just added
+bool nfc_is_spool_just_added(void) {
+    return g_spool_just_added;
+}
+
+// Get the tag ID of the just-added spool
+const char* nfc_get_just_added_tag_id(void) {
+    return g_just_added_tag_id;
+}
+
+// Get vendor/material of just-added spool (returns empty string if unknown)
+const char* nfc_get_just_added_vendor(void) {
+    return g_just_added_vendor;
+}
+
+const char* nfc_get_just_added_material(void) {
+    return g_just_added_material;
+}
+
+// Clear "just added" flag (called when NEW tag is placed, not when tag removed)
+void nfc_clear_spool_just_added(void) {
+    g_spool_just_added = false;
+    g_just_added_tag_id[0] = '\0';
+    g_just_added_vendor[0] = '\0';
+    g_just_added_material[0] = '\0';
 }
 
 // =============================================================================

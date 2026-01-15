@@ -349,6 +349,52 @@ class Database:
             row = await cursor.fetchone()
             return Spool(**dict(row)) if row else None
 
+    async def get_untagged_spools(self) -> list[Spool]:
+        """Get all spools without a tag_id assigned."""
+        async with self.conn.execute(
+            "SELECT * FROM spools WHERE tag_id IS NULL OR tag_id = '' ORDER BY created_at DESC"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [Spool(**dict(row)) for row in rows]
+
+    async def link_tag_to_spool(
+        self, spool_id: str, tag_id: str, tag_type: Optional[str] = None, data_origin: Optional[str] = None
+    ) -> Optional[Spool]:
+        """Link an NFC tag to an existing spool.
+
+        Args:
+            spool_id: Spool UUID
+            tag_id: Base64-encoded NFC UID
+            tag_type: Optional tag type (e.g., "bambu", "generic")
+            data_origin: Optional data origin (e.g., "nfc_link")
+
+        Returns:
+            Updated spool on success, None if spool not found
+        """
+        existing = await self.get_spool(spool_id)
+        if not existing:
+            return None
+
+        now = int(time.time())
+        updates = ["tag_id = ?", "updated_at = ?"]
+        values = [tag_id, now]
+
+        if tag_type:
+            updates.append("tag_type = ?")
+            values.append(tag_type)
+
+        if data_origin:
+            updates.append("data_origin = ?")
+            values.append(data_origin)
+
+        values.append(spool_id)
+        query = f"UPDATE spools SET {', '.join(updates)} WHERE id = ?"
+
+        await self.conn.execute(query, values)
+        await self.conn.commit()
+
+        return await self.get_spool(spool_id)
+
     # ============ Printer Operations ============
 
     async def get_printers(self) -> list[Printer]:

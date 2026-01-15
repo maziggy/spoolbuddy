@@ -257,6 +257,26 @@ bool spool_add_to_inventory(const char *tag_id, const char *vendor, const char *
                             int label_weight, int weight_current, const char *data_origin,
                             const char *tag_type, const char *slicer_filament);
 
+// Untagged spool info (for linking tags to existing spools)
+typedef struct {
+    char id[64];            // Spool UUID
+    char brand[32];
+    char material[32];
+    char color_name[32];
+    uint32_t color_rgba;
+    int label_weight;
+    int spool_number;
+    bool valid;
+} UntaggedSpoolInfo;
+
+// Get list of spools without NFC tags assigned
+// Returns number of spools found (up to max_count), fills array
+int spool_get_untagged_list(UntaggedSpoolInfo *spools, int max_count);
+
+// Link an NFC tag to an existing spool
+// Returns true on success, false on failure (tag already assigned or spool not found)
+bool spool_link_tag(const char *spool_id, const char *tag_id, const char *tag_type);
+
 // =============================================================================
 // OTA functions (mocked in simulator - implemented in sim_mocks.c)
 // =============================================================================
@@ -286,6 +306,18 @@ uint32_t nfc_get_tag_color_rgba(void);
 int nfc_get_tag_spool_weight(void);
 const char *nfc_get_tag_type(void);
 const char *nfc_get_tag_slicer_filament(void);
+
+// Update cached tag data (call after add/link to update status bar immediately)
+void nfc_update_tag_cache(const char *vendor, const char *material, const char *subtype,
+                          const char *color_name, uint32_t color_rgba);
+
+// "Just added" state for status bar message after add/link
+void nfc_set_spool_just_added(const char *tag_id, const char *vendor, const char *material);
+bool nfc_is_spool_just_added(void);
+const char* nfc_get_just_added_tag_id(void);
+const char* nfc_get_just_added_vendor(void);
+const char* nfc_get_just_added_material(void);
+void nfc_clear_spool_just_added(void);
 
 // =============================================================================
 // AMS Slot Assignment functions (configure printer AMS with filament/calibration)

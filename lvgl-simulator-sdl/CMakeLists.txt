@@ -21,6 +21,19 @@ if(APPLE)
     )
     set(SDL2_INCLUDE_DIRS "${SDL2_PREFIX}/include")
     set(SDL2_LIBRARIES "-L${SDL2_PREFIX}/lib -lSDL2")
+
+    # Get Homebrew curl prefix
+    execute_process(
+        COMMAND brew --prefix curl
+        OUTPUT_VARIABLE CURL_PREFIX
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE CURL_BREW_RESULT
+    )
+    if(CURL_BREW_RESULT EQUAL 0 AND CURL_PREFIX)
+        # Set hints for find_package to find Homebrew curl
+        set(CURL_ROOT "${CURL_PREFIX}")
+        set(CMAKE_PREFIX_PATH "${CURL_PREFIX}" ${CMAKE_PREFIX_PATH})
+    endif()
 else()
     # Linux - use pkg-config
     find_package(PkgConfig REQUIRED)
@@ -31,6 +44,15 @@ endif()
 if(ENABLE_BACKEND_CLIENT)
     # Find libcurl for HTTP backend communication
     find_package(CURL QUIET)
+    if(NOT CURL_FOUND AND APPLE)
+        # Fallback: try Homebrew curl directly
+        if(CURL_PREFIX)
+            set(CURL_FOUND TRUE)
+            set(CURL_INCLUDE_DIRS "${CURL_PREFIX}/include")
+            set(CURL_LIBRARIES "-L${CURL_PREFIX}/lib -lcurl")
+            message(STATUS "Using Homebrew curl: ${CURL_PREFIX}")
+        endif()
+    endif()
     if(NOT CURL_FOUND)
         message(WARNING "libcurl not found - backend client disabled. Install with: brew install curl")
         set(ENABLE_BACKEND_CLIENT OFF)
