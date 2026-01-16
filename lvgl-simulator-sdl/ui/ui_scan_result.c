@@ -984,8 +984,10 @@ void ui_scan_result_update(void) {
     if (objects.scan_screen_main_panel_spool_panel_label_weight) {
         if (scale_is_initialized()) {
             float weight = scale_get_weight();
+            int weight_int = (int)weight;
+            if (weight_int < 0) weight_int = 0;
             char weight_str[32];
-            snprintf(weight_str, sizeof(weight_str), "%.0fg", weight);
+            snprintf(weight_str, sizeof(weight_str), "%dg", weight_int);
             lv_label_set_text(objects.scan_screen_main_panel_spool_panel_label_weight, weight_str);
         } else {
             lv_label_set_text(objects.scan_screen_main_panel_spool_panel_label_weight, "---g");

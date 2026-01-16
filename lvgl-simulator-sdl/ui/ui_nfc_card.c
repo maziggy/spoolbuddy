@@ -731,7 +731,9 @@ static void update_popup_weight(void) {
 
     char weight_text[64];
     if (scale_ok) {
-        snprintf(weight_text, sizeof(weight_text), "Weight: %.1fg", weight);
+        int weight_int = (int)weight;
+        if (weight_int < 0) weight_int = 0;
+        snprintf(weight_text, sizeof(weight_text), "Weight: %dg", weight_int);
     } else {
         snprintf(weight_text, sizeof(weight_text), "Weight: N/A (scale not ready)");
     }
@@ -816,8 +818,10 @@ void ui_nfc_card_update(void) {
         if (objects.main_screen_nfc_scale_scale_label) {
             if (scale_is_initialized()) {
                 float weight = scale_get_weight();
+                int weight_int = (int)weight;
+                if (weight_int < 0) weight_int = 0;
                 char weight_str[16];
-                snprintf(weight_str, sizeof(weight_str), "%.1fg", weight);
+                snprintf(weight_str, sizeof(weight_str), "%dg", weight_int);
                 lv_label_set_text(objects.main_screen_nfc_scale_scale_label, weight_str);
                 lv_obj_set_style_text_color(objects.main_screen_nfc_scale_scale_label,
                     lv_color_hex(0xFF00FF00), LV_PART_MAIN);

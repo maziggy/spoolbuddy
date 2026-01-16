@@ -166,10 +166,16 @@ fn main() {
     let sysloop = EspSystemEventLoop::take().expect("Failed to take system event loop");
     let nvs = EspDefaultNvsPartition::take().ok();
 
+    // Clone NVS partition for scale calibration persistence
+    let nvs_for_scale = nvs.clone();
+
     match wifi_manager::init_wifi_system(peripherals.modem, sysloop, nvs) {
         Ok(_) => info!("WiFi subsystem ready"),
         Err(e) => warn!("WiFi init failed: {}", e),
     }
+
+    // Initialize scale NVS (for calibration persistence)
+    scale_manager::init_nvs(nvs_for_scale);
 
     // Initialize backend client (for server communication)
     backend_client::init();
