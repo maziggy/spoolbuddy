@@ -826,6 +826,18 @@ export function Settings() {
     };
 
     loadSupportData();
+
+    // Poll debug logging state every 10 seconds to update timer
+    const interval = setInterval(async () => {
+      try {
+        const state = await api.getDebugLogging();
+        setDebugLogging(state);
+      } catch (e) {
+        // Silently ignore polling errors
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, [activeTab]);
 
   const refreshLogs = async () => {
@@ -1549,7 +1561,7 @@ export function Settings() {
                 </div>
 
                 {/* Support Bundle */}
-                <div class="p-4 rounded-xl border border-[var(--border-color)]">
+                <div class="p-4 rounded-xl border border-[var(--border-color)] space-y-4">
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
                       <FileText class="w-5 h-5 text-[var(--accent)]" />
@@ -1574,11 +1586,54 @@ export function Settings() {
                       Download
                     </button>
                   </div>
-                  {!debugLogging?.enabled && (
-                    <p class="mt-3 text-xs text-yellow-500 flex items-center gap-1.5">
-                      <AlertCircle class="w-3.5 h-3.5" />
-                      Enable debug logging above to generate support bundle
+
+                  {/* Privacy Info */}
+                  <div class="p-4 bg-[var(--bg-tertiary)] rounded-lg space-y-3">
+                    <p class="text-sm font-medium text-[var(--text-primary)]">What's in the support bundle?</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p class="text-green-500 font-medium mb-1">Collected:</p>
+                        <ul class="text-[var(--text-muted)] space-y-0.5">
+                          <li>• App version and uptime</li>
+                          <li>• OS, platform, Python version</li>
+                          <li>• Database statistics (counts only)</li>
+                          <li>• Printer models (no names/serials)</li>
+                          <li>• Resource usage (CPU, memory, disk)</li>
+                          <li>• Debug logs (sanitized)</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <p class="text-red-400 font-medium mb-1">NOT collected:</p>
+                        <ul class="text-[var(--text-muted)] space-y-0.5">
+                          <li>• Printer names, IPs, serial numbers</li>
+                          <li>• Access codes and passwords</li>
+                          <li>• Email addresses</li>
+                          <li>• API keys and tokens</li>
+                          <li>• Your hostname or username</li>
+                          <li>• Personal file paths</li>
+                        </ul>
+                      </div>
+                    </div>
+                    <p class="text-xs text-[var(--text-muted)]/70">
+                      IP addresses in logs are replaced with [IP], email addresses with [EMAIL], and usernames in paths with [user].
                     </p>
+                  </div>
+
+                  {/* Instructions when debug logging is disabled */}
+                  {!debugLogging?.enabled && (
+                    <div class="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                      <p class="text-sm text-[var(--text-secondary)]">
+                        <span class="text-amber-400 font-medium">To report an issue:</span>
+                        <br />
+                        1. Enable debug logging above
+                        <br />
+                        2. Reproduce the issue
+                        <br />
+                        3. Download the support bundle
+                        <br />
+                        4. Attach the ZIP file to your issue report
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>

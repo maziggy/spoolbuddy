@@ -276,15 +276,22 @@ def _read_log_entries(
 
 def _sanitize_log_content(content: str) -> str:
     """Sanitize sensitive data from log content."""
-    # IP addresses
+    # IP addresses (IPv4)
     content = re.sub(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", "[IP]", content)
     # Email addresses
-    content = re.sub(r"\b[\w.-]+@[\w.-]+\.\w+\b", "[EMAIL]", content)
-    # Access codes (8 digit codes)
+    content = re.sub(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "[EMAIL]", content)
+    # Access codes (8 digit codes commonly used by Bambu printers)
     content = re.sub(r"\b\d{8}\b", "[CODE]", content)
+    # Serial numbers (15+ character alphanumeric, common for printers)
+    content = re.sub(r"\b[A-Z0-9]{15,}\b", "[SERIAL]", content)
+    # Long hex strings that might be tokens (32+ chars)
+    content = re.sub(r"\b[a-fA-F0-9]{32,}\b", "[TOKEN]", content)
     # Paths with usernames
     content = re.sub(r"/home/[^/\s]+/", "/home/[user]/", content)
     content = re.sub(r"/Users/[^/\s]+/", "/Users/[user]/", content)
+    content = re.sub(r"/opt/[^/\s]+/", "/opt/[user]/", content)
+    # Windows paths with usernames
+    content = re.sub(r"C:\\Users\\[^\\]+\\", "C:\\Users\\[user]\\", content)
     return content
 
 
