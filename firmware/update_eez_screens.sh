@@ -141,6 +141,8 @@ CUSTOM_FILES=(
     "ui_nvs.c"
     "ui_scale.c"
     "ui_update.c"
+    "ui_status_bar.c"
+    "ui_status_bar.h"
     "ui_internal.h"
 )
 

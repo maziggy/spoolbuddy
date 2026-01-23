@@ -1,0 +1,1 @@
+../../firmware/components/eez_ui/ui_status_bar.h

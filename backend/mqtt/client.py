@@ -1123,6 +1123,7 @@ class PrinterConnection:
             ams_id=ams_id,
             tray_id=tray_id,
             tray_type=tray_data.get("tray_type"),
+            tray_sub_brands=tray_data.get("tray_sub_brands"),
             tray_color=tray_data.get("tray_color"),
             tray_info_idx=tray_data.get("tray_info_idx"),
             k_value=k_value,

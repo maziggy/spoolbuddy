@@ -65,10 +65,6 @@ static char dismissed_tag_uid[32] = {0};  // UID of tag that was dismissed (surv
 // Debounce time for tag removal (ms) - suppression cleared after tag gone this long
 #define TAG_REMOVAL_DEBOUNCE_MS 2000
 
-// Weight display stabilization (hysteresis)
-static float last_displayed_weight = 0.0f;
-static bool weight_initialized = false;
-
 // Popup elements
 static lv_obj_t *tag_popup = NULL;
 static lv_obj_t *popup_tag_label = NULL;
@@ -119,17 +115,15 @@ void ui_nfc_card_show_details(void) {
     if (details_modal) return;  // Already open
 
     // Check if tag is present
-    if (!nfc_tag_present()) {
-        ESP_LOGI(TAG, "No tag present for details modal");
-        return;
+    bool tag_present = nfc_tag_present();
+
+    // Get tag UID if present
+    uint8_t uid_str[32] = {0};
+    bool tag_in_inventory = false;
+    if (tag_present) {
+        nfc_get_uid_hex(uid_str, sizeof(uid_str));
+        tag_in_inventory = spool_exists_by_tag((const char*)uid_str);
     }
-
-    // Get tag UID
-    uint8_t uid_str[32];
-    nfc_get_uid_hex(uid_str, sizeof(uid_str));
-
-    // Check if tag is in inventory
-    bool tag_in_inventory = spool_exists_by_tag((const char*)uid_str);
 
     // Get weight
     float weight = scale_get_weight();
@@ -141,7 +135,7 @@ void ui_nfc_card_show_details(void) {
         if (scale_weight < 0) scale_weight = 0;
     }
 
-    ESP_LOGI(TAG, "Opening tag details modal for %s (in_inventory=%d)", uid_str, tag_in_inventory);
+    ESP_LOGI(TAG, "Opening tag details modal (tag_present=%d, in_inventory=%d)", tag_present, tag_in_inventory);
 
     // Create modal background
     details_modal = lv_obj_create(lv_layer_top());
@@ -155,9 +149,15 @@ void ui_nfc_card_show_details(void) {
     // Click on background closes modal
     lv_obj_add_event_cb(details_modal, details_modal_close_handler, LV_EVENT_CLICKED, NULL);
 
-    // Create card - larger for known spools with all the new info
+    // Determine card size based on state
+    int card_height = 400;  // Default for "Ready to scan"
+    if (tag_present) {
+        card_height = tag_in_inventory ? 420 : 220;
+    }
+
+    // Create card
     lv_obj_t *card = lv_obj_create(details_modal);
-    lv_obj_set_size(card, 480, tag_in_inventory ? 420 : 220);
+    lv_obj_set_size(card, 480, card_height);
     lv_obj_center(card);
     lv_obj_set_style_bg_color(card, lv_color_hex(0x1a1a1a), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(card, 255, LV_PART_MAIN);
@@ -173,12 +173,105 @@ void ui_nfc_card_show_details(void) {
 
     // Title
     lv_obj_t *title = lv_label_create(card);
-    lv_label_set_text(title, "Tag Details");
+    lv_label_set_text(title, tag_present ? "Current Spool" : "Current Spool");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_set_style_text_color(title, lv_color_hex(0xfafafa), LV_PART_MAIN);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 
-    if (tag_in_inventory) {
+    if (!tag_present) {
+        // No tag present - show "Ready to scan" state (matches frontend Dashboard)
+
+        // Container for colored circle + wave rings
+        lv_obj_t *scan_container = lv_obj_create(card);
+        lv_obj_set_size(scan_container, 180, 180);
+        lv_obj_align(scan_container, LV_ALIGN_TOP_MID, 0, 30);
+        lv_obj_set_style_bg_opa(scan_container, 0, 0);
+        lv_obj_set_style_border_width(scan_container, 0, 0);
+        lv_obj_set_style_pad_all(scan_container, 0, 0);
+        lv_obj_clear_flag(scan_container, LV_OBJ_FLAG_SCROLLABLE);
+
+        // Outer gray ring
+        lv_obj_t *ring1 = lv_obj_create(scan_container);
+        lv_obj_remove_style_all(ring1);
+        lv_obj_set_size(ring1, 170, 170);
+        lv_obj_center(ring1);
+        lv_obj_set_style_radius(ring1, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(ring1, 1, 0);
+        lv_obj_set_style_border_color(ring1, lv_color_hex(0x444444), 0);
+        lv_obj_set_style_border_opa(ring1, 180, 0);
+        lv_obj_set_style_bg_opa(ring1, 0, 0);
+        lv_obj_clear_flag(ring1, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+        // Middle gray ring
+        lv_obj_t *ring2 = lv_obj_create(scan_container);
+        lv_obj_remove_style_all(ring2);
+        lv_obj_set_size(ring2, 130, 130);
+        lv_obj_center(ring2);
+        lv_obj_set_style_radius(ring2, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(ring2, 1, 0);
+        lv_obj_set_style_border_color(ring2, lv_color_hex(0x555555), 0);
+        lv_obj_set_style_border_opa(ring2, 200, 0);
+        lv_obj_set_style_bg_opa(ring2, 0, 0);
+        lv_obj_clear_flag(ring2, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+        // Inner ring (outline around colored circle)
+        lv_obj_t *ring3 = lv_obj_create(scan_container);
+        lv_obj_remove_style_all(ring3);
+        lv_obj_set_size(ring3, 90, 90);
+        lv_obj_center(ring3);
+        lv_obj_set_style_radius(ring3, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_border_width(ring3, 3, 0);
+        lv_obj_set_style_border_color(ring3, lv_color_hex(0x666666), 0);
+        lv_obj_set_style_border_opa(ring3, 255, 0);
+        lv_obj_set_style_bg_opa(ring3, 0, 0);
+        lv_obj_clear_flag(ring3, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+        // Colored filled circle in center (like frontend's SpoolIcon)
+        lv_obj_t *color_circle = lv_obj_create(scan_container);
+        lv_obj_remove_style_all(color_circle);
+        lv_obj_set_size(color_circle, 80, 80);
+        lv_obj_center(color_circle);
+        lv_obj_set_style_radius(color_circle, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(color_circle, lv_color_hex(0x4A90D9), 0);  // Blue color
+        lv_obj_set_style_bg_opa(color_circle, 255, 0);
+        lv_obj_clear_flag(color_circle, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+
+        // "Ready to scan" text
+        lv_obj_t *ready_label = lv_label_create(card);
+        lv_label_set_text(ready_label, "Ready to scan");
+        lv_obj_set_style_text_font(ready_label, &lv_font_montserrat_18, LV_PART_MAIN);
+        lv_obj_set_style_text_color(ready_label, lv_color_hex(0xaaaaaa), LV_PART_MAIN);
+        lv_obj_align(ready_label, LV_ALIGN_TOP_MID, 0, 215);
+
+        // "Place a spool on the scale" text
+        lv_obj_t *hint_label = lv_label_create(card);
+        lv_label_set_text(hint_label, "Place a spool on the scale to identify it");
+        lv_obj_set_style_text_font(hint_label, &lv_font_montserrat_12, LV_PART_MAIN);
+        lv_obj_set_style_text_color(hint_label, lv_color_hex(0x666666), LV_PART_MAIN);
+        lv_obj_align(hint_label, LV_ALIGN_TOP_MID, 0, 240);
+
+        // "NFC tag will be read automatically" hint
+        lv_obj_t *nfc_hint = lv_label_create(card);
+        lv_label_set_text(nfc_hint, LV_SYMBOL_WARNING " NFC tag will be read automatically");
+        lv_obj_set_style_text_font(nfc_hint, &lv_font_montserrat_10, LV_PART_MAIN);
+        lv_obj_set_style_text_color(nfc_hint, lv_color_hex(0x555555), LV_PART_MAIN);
+        lv_obj_align(nfc_hint, LV_ALIGN_TOP_MID, 0, 270);
+
+        // Close button
+        lv_obj_t *btn_close = lv_btn_create(card);
+        lv_obj_set_size(btn_close, 100, 36);
+        lv_obj_align(btn_close, LV_ALIGN_BOTTOM_MID, 0, -5);
+        lv_obj_set_style_bg_color(btn_close, lv_color_hex(0x555555), 0);
+        lv_obj_set_style_radius(btn_close, 18, 0);
+        lv_obj_add_event_cb(btn_close, details_modal_close_handler, LV_EVENT_CLICKED, NULL);
+
+        lv_obj_t *close_label = lv_label_create(btn_close);
+        lv_label_set_text(close_label, "Close");
+        lv_obj_set_style_text_font(close_label, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_color(close_label, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_center(close_label);
+
+    } else if (tag_in_inventory) {
         // Get spool data from inventory
         SpoolInfoLocal spool_info = {0};
         spool_get_by_tag_local((const char*)uid_str, &spool_info);
@@ -745,7 +838,7 @@ static void show_link_spool_popup(void) {
 
     // Title
     lv_obj_t *title = lv_label_create(card);
-    lv_label_set_text(title, "Select Spool to Link");
+    lv_label_set_text(title, "Link to Spool");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(title, lv_color_hex(0x1976D2), LV_PART_MAIN);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
@@ -774,16 +867,17 @@ static void show_link_spool_popup(void) {
 
         // Color indicator
         lv_obj_t *color_dot = lv_obj_create(item);
+        lv_obj_remove_style_all(color_dot);  // Remove default styles to prevent artifacts
         lv_obj_set_size(color_dot, 24, 24);
         lv_obj_align(color_dot, LV_ALIGN_LEFT_MID, 10, 0);
         lv_obj_set_style_radius(color_dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-        lv_obj_set_style_border_width(color_dot, 0, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(color_dot, LV_OPA_COVER, LV_PART_MAIN);
         uint32_t rgba = spool->color_rgba;
         uint8_t r = (rgba >> 24) & 0xFF;
         uint8_t g = (rgba >> 16) & 0xFF;
         uint8_t b = (rgba >> 8) & 0xFF;
         lv_obj_set_style_bg_color(color_dot, lv_color_make(r, g, b), LV_PART_MAIN);
-        lv_obj_clear_flag(color_dot, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(color_dot, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
         // Spool info
         lv_obj_t *info = lv_label_create(item);
@@ -1263,38 +1357,5 @@ void ui_nfc_card_update(void) {
 
     last_tag_present = tag_present;
 
-    // Always update scale status label on main screen (shows current weight)
-    // Uses 10g hysteresis to reduce visual bouncing
-    if (objects.main_screen_nfc_scale_scale_label) {
-        if (scale_is_initialized()) {
-            float weight = scale_get_weight();
-
-            // Apply 10g hysteresis - only update if change > 10g or first reading
-            float diff = weight - last_displayed_weight;
-            if (diff < 0) diff = -diff;  // abs
-
-            if (!weight_initialized || diff >= 10.0f) {
-                last_displayed_weight = weight;
-                weight_initialized = true;
-
-                int weight_int = (int)weight;
-                // Show 0 if weight is between -20 and +20 (noise threshold)
-                if (weight_int >= -20 && weight_int <= 20) weight_int = 0;
-                char weight_str[16];
-                snprintf(weight_str, sizeof(weight_str), "%dg", weight_int);
-                lv_label_set_text(objects.main_screen_nfc_scale_scale_label, weight_str);
-            }
-            lv_obj_set_style_text_color(objects.main_screen_nfc_scale_scale_label,
-                lv_color_hex(0xFF00FF00), LV_PART_MAIN);
-        } else {
-            lv_label_set_text(objects.main_screen_nfc_scale_scale_label, "N/A");
-            lv_obj_set_style_text_color(objects.main_screen_nfc_scale_scale_label,
-                lv_color_hex(0xFFFF6600), LV_PART_MAIN);
-        }
-    }
-
-    // NFC status always shows "Ready"
-    if (objects.main_screen_nfc_scale_nfc_label) {
-        lv_label_set_text(objects.main_screen_nfc_scale_nfc_label, "Ready");
-    }
+    // Note: Scale and NFC status are now shown in the global status bar (ui_status_bar.c)
 }

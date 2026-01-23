@@ -59,8 +59,6 @@ static int dropdown_printer_count = 0;
 static lv_obj_t *status_eta_label = NULL;      // ETA on status row
 static lv_obj_t *progress_pct_label = NULL;    // Percentage on progress bar
 static lv_obj_t *last_main_screen = NULL;      // Track main screen to detect recreations
-// LED animation state (must reset when main screen is recreated)
-static bool led_anim_active = false;
 
 // Custom status message (set via ui_set_status_message)
 static char custom_status_message[128] = "";
@@ -86,7 +84,6 @@ static void update_cover_image(void);
 static void update_ams_display(void);
 static void update_ams_overview_display(void);
 static void update_notification_bell(void);
-static void update_status_bar(void);
 static void update_settings_menu_indicator(void);
 static void reset_main_screen_dynamic_state(void);  // Reset stale pointers on screen recreation
 
@@ -164,8 +161,8 @@ void update_backend_ui(void) {
     // Update notification bell periodically (in addition to screen changes)
     update_notification_bell();
 
-    // Update status bar messages
-    update_status_bar();
+    // Note: Status bar is now managed by ui_status_bar.c
+    // The old update_status_bar() is no longer called
 
     // Update settings menu firmware indicator
     update_settings_menu_indicator();
@@ -939,9 +936,6 @@ static void reset_main_screen_dynamic_state(void) {
 
     // Reset cover image state
     cover_displayed = false;
-
-    // Reset LED animation state (animation is auto-deleted when object is deleted)
-    led_anim_active = false;
 
     // Reset printer dropdown tracking to force update
     last_printer_count = -1;
@@ -2035,28 +2029,8 @@ static void update_ams_overview_display(void) {
         }
     }
 
-    // Update bottom bar message (matching main screen style)
-    if (objects.ams_screen_bottom_bar_message) {
-        int update_available = ota_is_update_available();
-
-        if (update_available) {
-            lv_label_set_text(objects.ams_screen_bottom_bar_message, "Update available! Settings -> Firmware Update");
-            lv_obj_set_style_text_color(objects.ams_screen_bottom_bar_message, lv_color_hex(0xFFD700), 0);  // Gold/yellow
-        } else {
-            lv_label_set_text(objects.ams_screen_bottom_bar_message, "System running");
-            lv_obj_set_style_text_color(objects.ams_screen_bottom_bar_message, lv_color_hex(0x666666), 0);  // Muted gray
-        }
-
-        // Update LED indicator if present
-        if (objects.ams_screen_bottom_bar_led) {
-            if (update_available) {
-                lv_led_set_color(objects.ams_screen_bottom_bar_led, lv_color_hex(0xFFD700));  // Gold/yellow
-            } else {
-                lv_led_set_color(objects.ams_screen_bottom_bar_led, lv_color_hex(0x666666));  // Muted gray
-                lv_led_set_brightness(objects.ams_screen_bottom_bar_led, 180);  // Dimmed
-            }
-        }
-    }
+    // Note: Bottom bar is now managed by ui_status_bar.c
+    // The old bottom bar message/LED updates have been removed
 
     // Left-align second row panels (HT-A, HT-B, EXT-1, EXT-2)
     // Create a flex container for row 2 and reparent the panels into it
@@ -2225,9 +2199,6 @@ void reset_backend_ui_state(void) {
     // Reset cover image state
     cover_displayed = false;
 
-    // Reset LED animation state
-    led_anim_active = false;
-
     // Reset slot stripes (become invalid when screen is deleted)
     for (int i = 0; i < STRIPE_COUNT; i++) {
         ht_a_stripes[i] = NULL;
@@ -2330,77 +2301,7 @@ static void update_notification_bell(void) {
     }
 }
 
-/**
- * @brief Animation callback for LED brightness pulsing
- */
-static void led_pulse_anim_cb(void *var, int32_t value) {
-    lv_led_set_brightness((lv_obj_t *)var, (uint8_t)value);
-}
-
-/**
- * @brief Update status bar with important messages
- *
- * Shows firmware update notification in the bottom status bar on the main screen.
- * obj0 = LED indicator dot (left side)
- * status_4 = main log message area (622px wide)
- * status_5 = "View Log >" link (73px at right)
- */
-static void update_status_bar(void) {
-    // Only update on main screen, and only if it's actually active
-    // This prevents crashes during screen transitions
-    if (!objects.main_screen || lv_scr_act() != objects.main_screen) {
-        return;
-    }
-
-    // Update status_4 (main log message area) on main screen
-    if (!objects.bottom_bar_message) {
-        return;
-    }
-
-    int update_available = ota_is_update_available();
-
-    if (update_available) {
-        // Set message text and color (yellow for update notification)
-        lv_label_set_text(objects.bottom_bar_message, "Update available! Settings -> Firmware Update");
-        lv_obj_set_style_text_color(objects.bottom_bar_message, lv_color_hex(0xFFD700), 0);  // Gold/yellow
-
-        // Show LED, change color to match message (yellow) and add pulsing
-        if (objects.bottom_bar_message_dot) {
-            lv_obj_clear_flag(objects.bottom_bar_message_dot, LV_OBJ_FLAG_HIDDEN);
-            lv_led_set_color(objects.bottom_bar_message_dot, lv_color_hex(0xFFD700));  // Gold/yellow
-
-            // Add very gentle pulsing animation if not already active
-            if (!led_anim_active) {
-                lv_anim_t anim;
-                lv_anim_init(&anim);
-                lv_anim_set_var(&anim, objects.bottom_bar_message_dot);
-                lv_anim_set_values(&anim, 255, 180);  // Very subtle: only 30% fade
-                lv_anim_set_time(&anim, 2500);  // 2.5s per direction
-                lv_anim_set_playback_time(&anim, 2500);
-                lv_anim_set_repeat_count(&anim, LV_ANIM_REPEAT_INFINITE);
-                lv_anim_set_exec_cb(&anim, led_pulse_anim_cb);
-                lv_anim_start(&anim);
-                led_anim_active = true;
-            }
-        }
-    } else {
-        // Show default status message
-        lv_label_set_text(objects.bottom_bar_message, "System running");
-        lv_obj_set_style_text_color(objects.bottom_bar_message, lv_color_hex(0x666666), 0);  // Muted gray
-
-        // Show LED with muted color, no pulsing
-        if (objects.bottom_bar_message_dot) {
-            // Stop any existing animation
-            if (led_anim_active) {
-                lv_anim_delete(objects.bottom_bar_message_dot, led_pulse_anim_cb);
-                led_anim_active = false;
-            }
-            lv_obj_clear_flag(objects.bottom_bar_message_dot, LV_OBJ_FLAG_HIDDEN);
-            lv_led_set_color(objects.bottom_bar_message_dot, lv_color_hex(0x666666));  // Muted gray, static
-            lv_led_set_brightness(objects.bottom_bar_message_dot, 180);  // Dimmed
-        }
-    }
-}
+// Note: Old update_status_bar() function removed - status bar is now managed by ui_status_bar.c
 
 // =============================================================================
 // Printer Selection Dropdown Handler

@@ -22,8 +22,9 @@ typedef struct {
     int ams_id;
     int tray_id;
     char tray_type[32];
-    char tray_color[16];  // Hex color e.g. "FF0000"
-    int remain;           // 0-100 percentage
+    char tray_sub_brands[64];  // Preset name e.g. "Bambu PLA Basic"
+    char tray_color[16];       // Hex color e.g. "FF0000"
+    int remain;                // 0-100 percentage
     int nozzle_temp_min;
     int nozzle_temp_max;
 } BackendAmsTray;

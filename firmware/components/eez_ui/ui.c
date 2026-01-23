@@ -13,6 +13,7 @@
 #include "ui_internal.h"
 #include "ui_nfc.h"
 #include "ui_nfc_card.h"
+#include "ui_status_bar.h"
 #include "screens.h"
 #include "images.h"
 #include "actions.h"
@@ -334,6 +335,9 @@ void ui_tick() {
         // Track which screen we're leaving for splash cleanup
         enum ScreensEnum leavingScreen = (enum ScreensEnum)(currentScreen + 1);
 
+        // Clean up status bar before any screen transition
+        ui_status_bar_cleanup();
+
         // For programmatic screens, create and load BEFORE deleting old screens
         // This prevents LVGL from having an invalid active screen during transition
         if (screen == SCREEN_ID_NFC_SCREEN || screen == SCREEN_ID_SCALE_CALIBRATION_SCREEN) {
@@ -409,6 +413,13 @@ void ui_tick() {
 
             loadScreen(screen);
 
+            // Initialize status bar AFTER screen is loaded (so lv_scr_act() returns correct screen)
+            if (screen == SCREEN_ID_MAIN_SCREEN) {
+                ui_status_bar_init(true);
+            } else if (screen == SCREEN_ID_AMS_OVERVIEW) {
+                ui_status_bar_init(false);
+            }
+
             // Clean up splash screen AFTER loading new screen to avoid "active screen deleted" warning
             if ((int)leavingScreen == SCREEN_ID_SPLASH_SCREEN) {
                 cleanup_splash_screen();
@@ -440,9 +451,10 @@ void ui_tick() {
         update_backend_ui();
         UI_LOGI("update_backend_ui returned");
 
-        // Update NFC card on main screen
-        if (screen_id == SCREEN_ID_MAIN_SCREEN) {
+        // Update NFC card on main screen and AMS overview (tag popup should appear on both)
+        if (screen_id == SCREEN_ID_MAIN_SCREEN || screen_id == SCREEN_ID_AMS_OVERVIEW) {
             ui_nfc_card_update();
+            ui_status_bar_update();
         }
 
         // Update weight display on scan_result screen

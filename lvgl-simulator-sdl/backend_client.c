@@ -154,6 +154,11 @@ static void parse_ams_tray(cJSON *tray_json, BackendAmsTray *tray) {
         strncpy(tray->tray_type, item->valuestring, sizeof(tray->tray_type) - 1);
     }
 
+    item = cJSON_GetObjectItem(tray_json, "tray_sub_brands");
+    if (item && item->valuestring) {
+        strncpy(tray->tray_sub_brands, item->valuestring, sizeof(tray->tray_sub_brands) - 1);
+    }
+
     item = cJSON_GetObjectItem(tray_json, "tray_color");
     if (item && item->valuestring) {
         strncpy(tray->tray_color, item->valuestring, sizeof(tray->tray_color) - 1);

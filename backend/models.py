@@ -92,6 +92,7 @@ class AmsTray(BaseModel):
     ams_id: int
     tray_id: int
     tray_type: str | None = None
+    tray_sub_brands: str | None = None  # Preset name (e.g., "Bambu PLA Basic")
     tray_color: str | None = None
     tray_info_idx: str | None = None
     k_value: float | None = None

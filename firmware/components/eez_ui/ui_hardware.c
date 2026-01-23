@@ -449,19 +449,36 @@ static void cal_screen_tare_handler(lv_event_t *e) {
     int result = scale_tare();
     // Update status in top card
     if (result == 0) {
+        if (scale_cal_status_card) {
+            lv_obj_set_style_bg_color(scale_cal_status_card, lv_color_hex(0x1a3320), LV_PART_MAIN);  // Green tint
+            lv_obj_set_style_border_color(scale_cal_status_card, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
+        }
+        if (scale_cal_status_icon) {
+            lv_obj_set_style_bg_color(scale_cal_status_icon, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
+        }
         if (scale_cal_status_text) {
             lv_label_set_text(scale_cal_status_text, "Scale Zeroed");
+            lv_obj_set_style_text_color(scale_cal_status_text, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
         }
         if (scale_cal_status_subtitle) {
             lv_label_set_text(scale_cal_status_subtitle, "Tare complete - ready for calibration");
+            lv_obj_set_style_text_color(scale_cal_status_subtitle, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
         }
     } else {
+        if (scale_cal_status_card) {
+            lv_obj_set_style_bg_color(scale_cal_status_card, lv_color_hex(0x331a1a), LV_PART_MAIN);  // Red tint
+            lv_obj_set_style_border_color(scale_cal_status_card, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
+        }
+        if (scale_cal_status_icon) {
+            lv_obj_set_style_bg_color(scale_cal_status_icon, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
+        }
         if (scale_cal_status_text) {
             lv_label_set_text(scale_cal_status_text, "Tare Failed");
             lv_obj_set_style_text_color(scale_cal_status_text, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
         }
         if (scale_cal_status_subtitle) {
             lv_label_set_text(scale_cal_status_subtitle, "Device not connected?");
+            lv_obj_set_style_text_color(scale_cal_status_subtitle, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
         }
     }
     // Immediately update weight display
@@ -475,7 +492,14 @@ static void cal_screen_calibrate_handler(lv_event_t *e) {
         if (text && strlen(text) > 0) {
             float known_weight = (float)atof(text);
             if (known_weight > 0) {
-                // Show calibrating status
+                // Show calibrating status (yellow)
+                if (scale_cal_status_card) {
+                    lv_obj_set_style_bg_color(scale_cal_status_card, lv_color_hex(0x33331a), LV_PART_MAIN);  // Yellow tint
+                    lv_obj_set_style_border_color(scale_cal_status_card, lv_color_hex(COLOR_ACCENT_YELLOW), LV_PART_MAIN);
+                }
+                if (scale_cal_status_icon) {
+                    lv_obj_set_style_bg_color(scale_cal_status_icon, lv_color_hex(COLOR_ACCENT_YELLOW), LV_PART_MAIN);
+                }
                 if (scale_cal_status_text) {
                     lv_label_set_text(scale_cal_status_text, "Calibrating...");
                     lv_obj_set_style_text_color(scale_cal_status_text, lv_color_hex(COLOR_ACCENT_YELLOW), LV_PART_MAIN);
@@ -488,20 +512,38 @@ static void cal_screen_calibrate_handler(lv_event_t *e) {
                 if (result == 0) {
                     char msg[64];
                     snprintf(msg, sizeof(msg), "Calibrated to %.0fg", known_weight);
+                    // Success - green
+                    if (scale_cal_status_card) {
+                        lv_obj_set_style_bg_color(scale_cal_status_card, lv_color_hex(0x1a3320), LV_PART_MAIN);
+                        lv_obj_set_style_border_color(scale_cal_status_card, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
+                    }
+                    if (scale_cal_status_icon) {
+                        lv_obj_set_style_bg_color(scale_cal_status_icon, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
+                    }
                     if (scale_cal_status_text) {
                         lv_label_set_text(scale_cal_status_text, "Scale Calibrated");
-                        lv_obj_set_style_text_color(scale_cal_status_text, lv_color_hex(COLOR_TEXT_PRIMARY), LV_PART_MAIN);
+                        lv_obj_set_style_text_color(scale_cal_status_text, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
                     }
                     if (scale_cal_status_subtitle) {
                         lv_label_set_text(scale_cal_status_subtitle, msg);
+                        lv_obj_set_style_text_color(scale_cal_status_subtitle, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
                     }
                 } else {
+                    // Failed - red
+                    if (scale_cal_status_card) {
+                        lv_obj_set_style_bg_color(scale_cal_status_card, lv_color_hex(0x331a1a), LV_PART_MAIN);
+                        lv_obj_set_style_border_color(scale_cal_status_card, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
+                    }
+                    if (scale_cal_status_icon) {
+                        lv_obj_set_style_bg_color(scale_cal_status_icon, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
+                    }
                     if (scale_cal_status_text) {
                         lv_label_set_text(scale_cal_status_text, "Calibration Failed");
                         lv_obj_set_style_text_color(scale_cal_status_text, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
                     }
                     if (scale_cal_status_subtitle) {
                         lv_label_set_text(scale_cal_status_subtitle, "Device not connected?");
+                        lv_obj_set_style_text_color(scale_cal_status_subtitle, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
                     }
                 }
                 // Immediately update weight display
@@ -509,13 +551,21 @@ static void cal_screen_calibrate_handler(lv_event_t *e) {
                 return;
             }
         }
-        // Invalid weight entered
+        // Invalid weight entered - red
+        if (scale_cal_status_card) {
+            lv_obj_set_style_bg_color(scale_cal_status_card, lv_color_hex(0x331a1a), LV_PART_MAIN);
+            lv_obj_set_style_border_color(scale_cal_status_card, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
+        }
+        if (scale_cal_status_icon) {
+            lv_obj_set_style_bg_color(scale_cal_status_icon, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
+        }
         if (scale_cal_status_text) {
             lv_label_set_text(scale_cal_status_text, "Invalid Weight");
             lv_obj_set_style_text_color(scale_cal_status_text, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
         }
         if (scale_cal_status_subtitle) {
             lv_label_set_text(scale_cal_status_subtitle, "Please enter a weight > 0");
+            lv_obj_set_style_text_color(scale_cal_status_subtitle, lv_color_hex(COLOR_ACCENT_RED), LV_PART_MAIN);
         }
     }
 }
@@ -539,8 +589,10 @@ static void cal_input_click_handler(lv_event_t *e) {
     if (scale_cal_keyboard) {
         lv_obj_clear_flag(scale_cal_keyboard, LV_OBJ_FLAG_HIDDEN);
         // Scroll content up so input field is visible above keyboard
+        // Weight input is at y=260, keyboard is ~200px tall
+        // Need to scroll enough that input appears near top of visible area
         if (scale_cal_content) {
-            lv_obj_scroll_to_y(scale_cal_content, 200, LV_ANIM_ON);
+            lv_obj_scroll_to_y(scale_cal_content, 180, LV_ANIM_ON);
         }
     }
 }
@@ -606,15 +658,18 @@ void create_scale_calibration_screen(void) {
     lv_obj_set_scrollbar_mode(scale_cal_content, LV_SCROLLBAR_MODE_OFF);
     lv_obj_t *content = scale_cal_content;
 
-    // Status card (top panel showing calibration state)
+    // Status card (top panel showing calibration state) - badge style with colored left border
     scale_cal_status_card = lv_obj_create(content);
     lv_obj_set_pos(scale_cal_status_card, 0, 0);
     lv_obj_set_size(scale_cal_status_card, 765, 65);
-    lv_obj_set_style_bg_color(scale_cal_status_card, lv_color_hex(COLOR_BG_PANEL), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(scale_cal_status_card, lv_color_hex(0x1a3320), LV_PART_MAIN);  // Tinted green bg
     lv_obj_set_style_bg_opa(scale_cal_status_card, 255, LV_PART_MAIN);
     lv_obj_set_style_radius(scale_cal_status_card, 12, LV_PART_MAIN);
-    lv_obj_set_style_border_width(scale_cal_status_card, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(scale_cal_status_card, 3, LV_PART_MAIN);
+    lv_obj_set_style_border_color(scale_cal_status_card, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
+    lv_obj_set_style_border_side(scale_cal_status_card, LV_BORDER_SIDE_LEFT, LV_PART_MAIN);
     lv_obj_set_style_pad_all(scale_cal_status_card, 12, LV_PART_MAIN);
+    lv_obj_set_style_pad_left(scale_cal_status_card, 15, LV_PART_MAIN);
     lv_obj_clear_flag(scale_cal_status_card, LV_OBJ_FLAG_SCROLLABLE);
 
     // Checkmark icon (green circle with checkmark)
@@ -652,34 +707,34 @@ void create_scale_calibration_screen(void) {
     lv_label_set_text(steps_header, "CALIBRATION STEPS");
     lv_obj_set_style_text_font(steps_header, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(steps_header, lv_color_hex(COLOR_TEXT_SECONDARY), LV_PART_MAIN);
-    lv_obj_set_pos(steps_header, 0, 75);
+    lv_obj_set_pos(steps_header, 0, 72);
 
-    // Step cards
-    create_step_card(content, 1, "Remove all items from the scale and press \"Tare\"", 95);
-    create_step_card(content, 2, "Place a known weight on scale", 148);
-    create_step_card(content, 3, "Enter the exact weight and press \"Calibrate\"", 201);
+    // Step cards (reduced spacing)
+    create_step_card(content, 1, "Remove all items from the scale and press \"Tare\"", 90);
+    create_step_card(content, 2, "Place a known weight on scale", 140);
+    create_step_card(content, 3, "Enter the exact weight and press \"Calibrate\"", 190);
 
     // "CALIBRATION WEIGHT (GRAMS)" label
     lv_obj_t *weight_label = lv_label_create(content);
     lv_label_set_text(weight_label, "CALIBRATION WEIGHT (GRAMS)");
     lv_obj_set_style_text_font(weight_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(weight_label, lv_color_hex(COLOR_TEXT_SECONDARY), LV_PART_MAIN);
-    lv_obj_set_pos(weight_label, 0, 260);
+    lv_obj_set_pos(weight_label, 0, 242);
 
     // Weight input container
     lv_obj_t *input_container = lv_obj_create(content);
-    lv_obj_set_pos(input_container, 0, 280);
-    lv_obj_set_size(input_container, 765, 55);
+    lv_obj_set_pos(input_container, 0, 260);
+    lv_obj_set_size(input_container, 765, 50);
     lv_obj_set_style_bg_color(input_container, lv_color_hex(COLOR_BG_PANEL), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(input_container, 255, LV_PART_MAIN);
     lv_obj_set_style_radius(input_container, 8, LV_PART_MAIN);
     lv_obj_set_style_border_width(input_container, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(input_container, 10, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(input_container, 8, LV_PART_MAIN);
     lv_obj_clear_flag(input_container, LV_OBJ_FLAG_SCROLLABLE);
 
     // Weight input field
     scale_cal_weight_input = lv_textarea_create(input_container);
-    lv_obj_set_size(scale_cal_weight_input, 200, 35);
+    lv_obj_set_size(scale_cal_weight_input, 200, 34);
     lv_obj_align(scale_cal_weight_input, LV_ALIGN_LEFT_MID, 0, 0);
     lv_textarea_set_text(scale_cal_weight_input, "500");
     lv_textarea_set_one_line(scale_cal_weight_input, true);
@@ -702,12 +757,12 @@ void create_scale_calibration_screen(void) {
     lv_label_set_text(scale_cal_status_label, "");
     lv_obj_set_style_text_font(scale_cal_status_label, &lv_font_montserrat_14, LV_PART_MAIN);
     lv_obj_set_style_text_color(scale_cal_status_label, lv_color_hex(COLOR_TEXT_SECONDARY), LV_PART_MAIN);
-    lv_obj_set_pos(scale_cal_status_label, 0, 345);
+    lv_obj_set_pos(scale_cal_status_label, 0, 315);
 
-    // Button container (bottom)
+    // Button container (bottom) - moved up
     lv_obj_t *btn_container = lv_obj_create(content);
-    lv_obj_set_pos(btn_container, 0, 370);
-    lv_obj_set_size(btn_container, 765, 55);
+    lv_obj_set_pos(btn_container, 0, 340);
+    lv_obj_set_size(btn_container, 765, 50);
     lv_obj_set_style_bg_opa(btn_container, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(btn_container, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(btn_container, 0, LV_PART_MAIN);
@@ -715,7 +770,7 @@ void create_scale_calibration_screen(void) {
 
     // Tare button (gray, left)
     lv_obj_t *tare_btn = lv_button_create(btn_container);
-    lv_obj_set_size(tare_btn, 370, 50);
+    lv_obj_set_size(tare_btn, 370, 45);
     lv_obj_align(tare_btn, LV_ALIGN_LEFT_MID, 0, 0);
     lv_obj_set_style_bg_color(tare_btn, lv_color_hex(0x555555), LV_PART_MAIN);
     lv_obj_set_style_bg_color(tare_btn, lv_color_hex(0x444444), LV_PART_MAIN | LV_STATE_PRESSED);
@@ -729,7 +784,7 @@ void create_scale_calibration_screen(void) {
 
     // Calibrate button (green, right)
     lv_obj_t *calibrate_btn = lv_button_create(btn_container);
-    lv_obj_set_size(calibrate_btn, 370, 50);
+    lv_obj_set_size(calibrate_btn, 370, 45);
     lv_obj_align(calibrate_btn, LV_ALIGN_RIGHT_MID, 0, 0);
     lv_obj_set_style_bg_color(calibrate_btn, lv_color_hex(COLOR_ACCENT_GREEN), LV_PART_MAIN);
     lv_obj_set_style_bg_color(calibrate_btn, lv_color_hex(0x00cc00), LV_PART_MAIN | LV_STATE_PRESSED);
@@ -740,6 +795,14 @@ void create_scale_calibration_screen(void) {
     lv_obj_set_style_text_font(cal_label, &lv_font_montserrat_18, LV_PART_MAIN);
     lv_obj_set_style_text_color(cal_label, lv_color_hex(0x000000), LV_PART_MAIN);
     lv_obj_center(cal_label);
+
+    // Spacer at bottom to allow scrolling when keyboard is visible
+    lv_obj_t *spacer = lv_obj_create(content);
+    lv_obj_set_pos(spacer, 0, 400);
+    lv_obj_set_size(spacer, 1, 200);  // Invisible spacer for scroll room
+    lv_obj_set_style_bg_opa(spacer, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(spacer, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(spacer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 
     // Keyboard (hidden by default)
     scale_cal_keyboard = lv_keyboard_create(scale_calibration_screen);

@@ -545,6 +545,11 @@ void create_screen_main_screen() {
             lv_obj_set_style_shadow_ofs_y(obj, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_shadow_ofs_x(obj, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_shadow_width(obj, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
+            // Disabled state styling
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0xff1a1a1a), LV_PART_MAIN | LV_STATE_DISABLED);
+            lv_obj_set_style_bg_opa(obj, 128, LV_PART_MAIN | LV_STATE_DISABLED);
+            lv_obj_set_style_shadow_opa(obj, 0, LV_PART_MAIN | LV_STATE_DISABLED);
+            lv_obj_add_state(obj, LV_STATE_DISABLED);
             {
                 lv_obj_t *parent_obj = obj;
                 {
@@ -1512,6 +1517,11 @@ void create_screen_ams_overview() {
             lv_obj_set_style_shadow_ofs_y(obj, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_shadow_ofs_x(obj, 2, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_shadow_width(obj, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
+            // Disabled state styling
+            lv_obj_set_style_bg_color(obj, lv_color_hex(0xff1a1a1a), LV_PART_MAIN | LV_STATE_DISABLED);
+            lv_obj_set_style_bg_opa(obj, 128, LV_PART_MAIN | LV_STATE_DISABLED);
+            lv_obj_set_style_shadow_opa(obj, 0, LV_PART_MAIN | LV_STATE_DISABLED);
+            lv_obj_add_state(obj, LV_STATE_DISABLED);
             {
                 lv_obj_t *parent_obj = obj;
                 {
