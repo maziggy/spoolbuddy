@@ -3,7 +3,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings
 
 # Application version - update this for each release
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1b2"
 
 # GitHub repository for update checks
 GITHUB_REPO = "maziggy/SpoolBuddy"
