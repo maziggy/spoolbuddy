@@ -1,0 +1,260 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+# Cancel in-progress runs for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # Backend Checks
+  # ============================================================================
+
+  backend-lint:
+    name: Backend Lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.actor != github.repository_owner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff check
+        run: ruff check backend/
+
+      - name: Run ruff format check
+        run: ruff format --check backend/
+
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.actor != github.repository_owner
+    needs: backend-lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout
+
+      - name: Run tests
+        timeout-minutes: 10
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short --timeout=60 --timeout-method=thread
+
+  # ============================================================================
+  # Frontend Checks
+  # ============================================================================
+
+  frontend-lint:
+    name: Frontend Lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.actor != github.repository_owner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: frontend
+        run: npm run lint
+
+  frontend-typecheck:
+    name: Frontend Type Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.actor != github.repository_owner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run TypeScript check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.actor != github.repository_owner
+    needs: [frontend-lint, frontend-typecheck]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run tests
+        timeout-minutes: 10
+        working-directory: frontend
+        run: npm run test:run
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.actor != github.repository_owner
+    needs: [frontend-tests]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+  # ============================================================================
+  # Docker Tests
+  # ============================================================================
+
+  docker-test:
+    name: Docker Build & Integration
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.actor != github.repository_owner
+    timeout-minutes: 20
+    needs: [backend-tests, frontend-build]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Test 1: Docker Build
+      - name: Build production image
+        run: docker build -t spoolbuddy:test .
+
+      - name: Verify backend imports
+        run: docker run --rm spoolbuddy:test python -c "import main; print('Backend imports OK')"
+
+      - name: Verify static files exist
+        run: docker run --rm spoolbuddy:test test -d /app/frontend/dist
+
+      # Test 2: Backend Unit Tests in Docker
+      - name: Build backend test image
+        run: docker compose -f docker-compose.test.yml build backend-test
+
+      - name: Run backend tests in Docker
+        run: docker compose -f docker-compose.test.yml run --rm backend-test
+
+      # Test 3: Frontend Unit Tests in Docker
+      - name: Build frontend test image
+        run: docker compose -f docker-compose.test.yml build frontend-test
+
+      - name: Run frontend tests in Docker
+        run: docker compose -f docker-compose.test.yml run --rm frontend-test
+
+      # Test 4: Integration Tests
+      - name: Build integration container
+        run: docker compose -f docker-compose.test.yml build integration
+
+      - name: Start integration container
+        run: |
+          docker compose -f docker-compose.test.yml up -d integration
+          echo "Waiting for container to be healthy..."
+          for i in {1..30}; do
+            if docker compose -f docker-compose.test.yml ps integration | grep -q "healthy"; then
+              echo "Container is healthy"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Test Spools API
+        run: |
+          RESPONSE=$(docker compose -f docker-compose.test.yml exec -T integration curl -s http://localhost:3000/api/spools)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q "\["
+
+      - name: Test Printers API
+        run: |
+          RESPONSE=$(docker compose -f docker-compose.test.yml exec -T integration curl -s http://localhost:3000/api/printers)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q "\["
+
+      - name: Test Catalog API
+        run: |
+          RESPONSE=$(docker compose -f docker-compose.test.yml exec -T integration curl -s http://localhost:3000/api/catalog)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q "\["
+
+      - name: Test Colors API
+        run: |
+          RESPONSE=$(docker compose -f docker-compose.test.yml exec -T integration curl -s http://localhost:3000/api/colors)
+          echo "$RESPONSE"
+          echo "$RESPONSE" | grep -q "\["
+
+      - name: Test static files served
+        run: |
+          STATUS=$(docker compose -f docker-compose.test.yml exec -T integration curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/)
+          echo "Static files HTTP status: $STATUS"
+          [ "$STATUS" = "200" ]
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.test.yml logs
+
+      - name: Cleanup
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v --remove-orphans
