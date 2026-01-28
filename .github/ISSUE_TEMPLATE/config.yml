@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://wiki.spoolbuddy.cool
+    about: Check the documentation for guides and troubleshooting
+  - name: Discussions
+    url: https://github.com/maziggy/spoolbuddy/discussions
+    about: Ask questions and share ideas with the community
+  - name: Discord
+    url: https://discord.gg/3XFdHBkF
+    about: Chat with the community in real-time

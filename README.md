@@ -114,7 +114,7 @@ SpoolBuddy requires these components (~$100-150 total):
 
 ### Bill of Materials
 
-See the [Hardware Required](https://wiki.spoolbuddy.cool/getting-started/hardware-required/) page for the complete BOM with purchase links.
+See the [Hardware](https://wiki.spoolbuddy.cool/getting-started/hardware/) page for the complete BOM with purchase links.
 
 ---
 
